@@ -32,7 +32,7 @@ export async function loadHousehold(db) {
     if (!Array.isArray(h.calendars) || !h.calendars.length) problems.push('calendars is empty');
     if (!(Number.isFinite(h.location?.lat) && Number.isFinite(h.location?.lon))) problems.push('location.lat/lon missing');
   }
-  if (problems.length) throw new BuildError(`Household settings: ${problems.join('; ')} (see README, step 4)`);
+  if (problems.length) throw new BuildError(`Household settings: ${problems.join('; ')} (see README, step 5)`);
   return h;
 }
 

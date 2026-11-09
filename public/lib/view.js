@@ -223,7 +223,8 @@ h1 { font-size: 60px; font-weight: 700; letter-spacing: -0.5px; line-height: 1; 
 .tw-row { display: flex; align-items: center; gap: 16px; }
 .tw-icon svg { width: 52px; height: 52px; display: block; }
 .tw-temps b { font-weight: 700; }
-.today-wx .rain, .today-wx .aqi { font-size: 30px; }
+/* One size for everything on today's line. */
+.today-wx .rain, .today-wx .aqi, .today-wx .tw-sunset, .today-wx .tw-sunset b { font-size: 30px; }
 .aqi { display: inline-flex; align-items: center; gap: 8px; }
 .aqi-face { width: 38px; height: 38px; flex: none; }
 .today-wx .drop { width: 22px; height: 22px; }
@@ -234,7 +235,6 @@ h1 { font-size: 60px; font-weight: 700; letter-spacing: -0.5px; line-height: 1; 
 .tw-air .aqi-warn > span:last-child { margin-left: -7px; }
 .tw-sunset { display: flex; align-items: center; gap: 10px; padding-left: 22px; border-left: 3px solid #000;
   font-size: 26px; line-height: 1.15; }
-.tw-sunset b { font-size: 32px; }
 .sunset-icon { width: 44px; height: 44px; flex: none; }
 .updated { font-size: 20px; color: #555; }
 .week { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); min-height: 0; }

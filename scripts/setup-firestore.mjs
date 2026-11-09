@@ -1,4 +1,4 @@
-// Loads the household settings and allowlist into Firestore (README, steps 4–5).
+// Loads the household settings and allowlist into Firestore (README, step 5).
 //
 //   node scripts/setup-firestore.mjs ~/Downloads/<service-account-key>.json
 //

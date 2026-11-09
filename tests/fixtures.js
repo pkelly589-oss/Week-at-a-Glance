@@ -13,10 +13,10 @@ export const HOUSEHOLD = {
     { person: 'pete', id: PETE },
     { person: 'david', id: DAVID },
     { id: 'home-tasks@group.calendar.google.com', label: 'Home Tasks', as_reminders: true },
-    { id: 'house@example.com', label: '3756 High' },
+    { id: 'house@example.com', label: 'House' },
     { id: 'en.usa#holiday@group.v.calendar.google.com', label: 'US holidays' },
   ],
-  location: { lat: 37.789, lon: -122.1913 },
+  location: { lat: 37.8044, lon: -122.2712 },
   hide_locations: ['123 Example St'],
   hide_events: ["Temescal farmer's market", "South Berkeley farmer's market"],
   reminders: [

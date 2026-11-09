@@ -138,12 +138,35 @@ export function weekOf(iso) {
   };
 }
 
-// Seconds from `ms` until the next Pacific midnight, plus a small margin so the
-// device wakes just after it. Used as the TRMNL refresh_rate.
-export function secondsToMidnight(ms, marginSec = 30) {
-  const next = startOfDay(addDays(isoDate(ms), 1));
+// The display refreshes twice a day, at midnight and noon Pacific
+// (requirements: Hardware > Refresh). The build runs 5 minutes before each.
+export const REFRESH_HOURS = [0, 12];
+
+// The instant a Pacific date reaches a given hour, DST-safe.
+export function zonedTime(iso, hour) {
+  return startOfDay(iso) + hour * 36e5 + (offsetMs(startOfDay(iso)) - offsetMs(startOfDay(iso) + hour * 36e5));
+}
+
+function refreshPoints(ms, hours) {
+  const today = isoDate(ms);
+  return [addDays(today, -1), today, addDays(today, 1)]
+    .flatMap((d) => hours.map((h) => zonedTime(d, h)));
+}
+
+// The most recent scheduled refresh at or before `ms`.
+export function lastRefreshAt(ms, hours = REFRESH_HOURS) {
+  return Math.max(...refreshPoints(ms, hours).filter((t) => t <= ms));
+}
+
+// Seconds from `ms` until the next scheduled refresh, plus a small margin so
+// the device wakes just after it. Used as the TRMNL refresh_rate.
+export function secondsToNextRefresh(ms, hours = REFRESH_HOURS, marginSec = 30) {
+  const next = Math.min(...refreshPoints(ms, hours).filter((t) => t > ms));
   return Math.max(60, Math.ceil((next - ms) / 1000) + marginSec);
 }
+
+// Kept for midnight-only use.
+export const secondsToMidnight = (ms, marginSec = 30) => secondsToNextRefresh(ms, [0], marginSec);
 
 // ---------------------------------------------------------------------------
 // Calendar events → one list per day

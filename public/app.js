@@ -194,7 +194,7 @@ function renderBanners() {
     out.push(['info', `The door display hasn't checked in since ${esc(stampLabel(dev.last_seen))}.`]);
   }
   if (dev?.pending_mac) {
-    out.push(['info', `A display (MAC <code>${esc(dev.pending_mac)}</code>) asked to connect. Approve it by adding <code>devices/${esc(dev.pending_mac)}</code> in Firestore (README, step 6).`]);
+    out.push(['info', `A display (MAC <code>${esc(dev.pending_mac)}</code>) asked to connect. Approve it by adding <code>devices/${esc(dev.pending_mac)}</code> in Firestore (README, step 7).`]);
   }
   $('banners').innerHTML = out.map(([kind, html]) => `<div class="banner ${kind}">${html}</div>`).join('');
 }

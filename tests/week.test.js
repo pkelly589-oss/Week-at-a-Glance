@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isoDate, startOfDay, weekOf, weekTitle, shortTime, secondsToMidnight, buildEvents,
+  isoDate, startOfDay, weekOf, weekTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
 } from '../public/lib/week.js';
@@ -268,7 +268,7 @@ test('holidays come first in their day, without badges', () => {
 });
 
 test('sunset in Oakland, computed locally, across the clock changes', () => {
-  const at = (iso) => clockTime(sunsetMs(iso, 37.789, -122.1913));
+  const at = (iso) => clockTime(sunsetMs(iso, 37.8044, -122.2712));
   // Published Oakland sunsets: Nov 10 4:59 PM, Jun 21 8:35 PM, Dec 21 4:54 PM, Mar 8 7:08 PM (PDT).
   const mins = (t) => { const [h, m] = t.split(/[: ]/); return (+h % 12 + 12) * 60 + +m; };
   for (const [iso, published] of [['2026-11-10', '4:59 PM'], ['2026-06-21', '8:35 PM'], ['2026-12-21', '4:54 PM'], ['2026-03-08', '7:08 PM']]) {
@@ -280,13 +280,13 @@ test("the header shows today's weather, air quality and sunset", () => {
   const week = weekOf('2026-11-10');
   const snap = buildSnapshot({ asOf: '2026-11-10', builtAt: 0, week, events: [],
     weather: { '2026-11-10': { icon: 'rain', label: 'Rain', hi: 58, lo: 50, rain: 70 } },
-    air: { '2026-11-10': 42 }, location: { lat: 37.789, lon: -122.1913 } });
+    air: { '2026-11-10': 42 }, location: { lat: 37.8044, lon: -122.2712 } });
   const head = weekHtml(snap, { mode: 'eink' }).split('<div class="week">')[0];
   assert.match(head, /class="today-wx"/);
   assert.match(head, /58°/);
   assert.match(head, /70%/);
   assert.match(head, /AQI 42/);
-  assert.match(head, /Sunset<br><b>5:00 PM<\/b>/);
+  assert.match(head, /Sunset<br><b>5:01 PM<\/b>/);
   assert.ok(head.indexOf('tw-air') > head.indexOf('tw-row') && head.indexOf('tw-sunset') > head.indexOf('tw-air'), 'AQI under the weather, sunset to the right');
   const columns = weekHtml(snap, { mode: 'eink' }).split('<div class="week">')[1];
   assert.doesNotMatch(columns, /AQI/, 'AQI is only in the header');
@@ -403,4 +403,15 @@ test("a Gmail-created copy's automatic privacy doesn't hide the real event", () 
   assert.equal(buildEvents([{ person: 'pete', events: [ev({ summary: 'Apply to Jobs', visibility: 'private' })] }], PEOPLE).length, 0);
   // A Gmail-created event on its own shows.
   assert.equal(buildEvents([{ person: 'pete', events: [ev({ summary: 'Flight to NYC', eventType: 'fromGmail', visibility: 'private' })] }], PEOPLE).length, 1);
+});
+
+test('refreshes come at midnight and noon, across the clock changes', () => {
+  const t = (s) => Date.parse(s);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T00:00:30-08:00')), 12 * 3600);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T11:59:00-08:00')), 60 + 30);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T18:00:00-08:00')), 6 * 3600 + 30);
+  // The night the clocks go back (Nov 1, 2026), midnight to noon is 13 hours.
+  assert.equal(secondsToNextRefresh(t('2026-11-01T00:00:00-07:00')), 13 * 3600 + 30);
+  assert.equal(new Date(lastRefreshAt(t('2026-11-10T09:00:00-08:00'))).toISOString(), '2026-11-10T08:00:00.000Z');
+  assert.equal(new Date(lastRefreshAt(t('2026-11-10T13:00:00-08:00'))).toISOString(), '2026-11-10T20:00:00.000Z');
 });
