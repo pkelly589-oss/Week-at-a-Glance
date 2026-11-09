@@ -55,19 +55,21 @@ async function build({ asOf, manual }) {
   }
 }
 
-// 23:55, so the image is ready before the device wakes at midnight. It builds
-// for the day about to begin (Saturday night builds next week). A failed run
-// is retried up to 3 times, 2 minutes apart.
+// Twice a day, at 11:55 and 23:55, so the image is ready before the device
+// wakes at noon and midnight. The 23:55 run builds for the day about to begin
+// (Saturday night builds next week). A failed run is retried up to 3 times,
+// 2 minutes apart. (Still called nightlyBuild so the deployed function keeps
+// its name.)
 export const nightlyBuild = onSchedule({
   ...BUILD_OPTS,
-  schedule: '55 23 * * *', timeZone: TZ,
+  schedule: '55 11,23 * * *', timeZone: TZ,
   retryCount: 3, minBackoffSeconds: 120, maxBackoffSeconds: 120,
 }, async () => {
   await build({ asOf: isoDate(Date.now() + 10 * 60 * 1000), manual: false });
 });
 
-// Web view: "Refresh now", at most once every 5 minutes.
-const MANUAL_GAP_MS = 5 * 60 * 1000;
+// Web view: "Refresh now", at most once a minute.
+const MANUAL_GAP_MS = 1 * 60 * 1000;
 // Firebase makes callable functions public on first deploy (the code itself
 // checks sign-in and the allowlist). If that step failed, see README
 // "Troubleshooting": allow public access on the refreshnow Cloud Run service.

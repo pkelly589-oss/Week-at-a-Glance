@@ -247,7 +247,7 @@ test('an approved display gets a key, then the latest image and a sleep until mi
   const status = (await db.doc('status/latest').get()).data();
   assert.equal(disp.body.status, 0);
   assert.equal(disp.body.filename, status.image);
-  assert.equal(disp.body.refresh_rate, 24 * 3600); // 23:59:30 to midnight + 30 s margin
+  assert.equal(disp.body.refresh_rate, 12 * 3600); // 00:00:30 to noon, plus the 30 s margin
   assert.equal(typeof disp.body.refresh_rate, 'number');
   assert.ok(disp.body.image_url.startsWith(`https://week.example.web.app/api/image/${status.image}.png?t=`));
   assert.equal((await db.doc('status/device').get()).data().battery_pct, 25);
@@ -260,12 +260,16 @@ test('an approved display gets a key, then the latest image and a sleep until mi
   assert.equal((await call(handler, { path: u.pathname, query: { t: 'guess' } })).code, 404);
 });
 
-test("if today's image isn't ready, the display checks back every 15 minutes until 6am", () => {
-  const at = (t) => Date.parse(`2026-11-10T${t}-08:00`);
-  assert.equal(refreshRate(at('00:00:30'), '2026-11-10'), 24 * 3600);
-  assert.equal(refreshRate(at('00:00:30'), '2026-11-09'), RETRY_SECONDS);
-  assert.equal(refreshRate(at('05:50:00'), '2026-11-09'), RETRY_SECONDS);
-  assert.equal(refreshRate(at('06:00:00'), '2026-11-09'), 18 * 3600 + 30);
+test("the display refreshes at midnight and noon, and retries if that refresh's image isn't ready", () => {
+  const at = (t, d = '2026-11-10') => Date.parse(`${d}T${t}-08:00`);
+  // Fresh images: sleep until the next noon or midnight.
+  assert.equal(refreshRate(at('00:00:30'), at('23:55:00', '2026-11-09')), 12 * 3600);
+  assert.equal(refreshRate(at('12:00:30'), at('11:55:00')), 12 * 3600);
+  assert.equal(refreshRate(at('15:00:00'), at('11:56:00')), 9 * 3600 + 30);
+  // The noon build hasn't landed: only the midnight image exists.
+  assert.equal(refreshRate(at('12:00:30'), at('23:55:00', '2026-11-09')), RETRY_SECONDS);
+  assert.equal(refreshRate(at('17:50:00'), at('23:55:00', '2026-11-09')), RETRY_SECONDS);
+  assert.equal(refreshRate(at('18:00:00'), at('23:55:00', '2026-11-09')), 6 * 3600 + 30); // gave up: wait for midnight
   assert.equal(refreshRate(at('00:00:30'), undefined), RETRY_SECONDS);
   assert.equal(batteryPercent('4.2'), 100);
   assert.equal(batteryPercent('3.4'), 0);

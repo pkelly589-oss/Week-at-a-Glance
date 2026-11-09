@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isoDate, startOfDay, weekOf, weekTitle, shortTime, secondsToMidnight, buildEvents,
+  isoDate, startOfDay, weekOf, weekTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
 } from '../public/lib/week.js';
@@ -403,4 +403,15 @@ test("a Gmail-created copy's automatic privacy doesn't hide the real event", () 
   assert.equal(buildEvents([{ person: 'pete', events: [ev({ summary: 'Apply to Jobs', visibility: 'private' })] }], PEOPLE).length, 0);
   // A Gmail-created event on its own shows.
   assert.equal(buildEvents([{ person: 'pete', events: [ev({ summary: 'Flight to NYC', eventType: 'fromGmail', visibility: 'private' })] }], PEOPLE).length, 1);
+});
+
+test('refreshes come at midnight and noon, across the clock changes', () => {
+  const t = (s) => Date.parse(s);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T00:00:30-08:00')), 12 * 3600);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T11:59:00-08:00')), 60 + 30);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T18:00:00-08:00')), 6 * 3600 + 30);
+  // The night the clocks go back (Nov 1, 2026), midnight to noon is 13 hours.
+  assert.equal(secondsToNextRefresh(t('2026-11-01T00:00:00-07:00')), 13 * 3600 + 30);
+  assert.equal(new Date(lastRefreshAt(t('2026-11-10T09:00:00-08:00'))).toISOString(), '2026-11-10T08:00:00.000Z');
+  assert.equal(new Date(lastRefreshAt(t('2026-11-10T13:00:00-08:00'))).toISOString(), '2026-11-10T20:00:00.000Z');
 });

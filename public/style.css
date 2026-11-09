@@ -100,14 +100,16 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--pete); ou
 .tw-main { display: flex; flex-direction: column; gap: 2px; }
 .tw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .tw-icon svg { width: 28px; height: 28px; display: block; }
-.tw-temps { font-size: 1.05rem; } .tw-temps b { font-weight: 700; }
+/* Every piece of today's line uses one size; weight and colour do the ranking. */
+.today-wx, .today-wx .tw-temps, .today-wx .rain, .today-wx .aqi, .today-wx .tw-sunset, .today-wx .tw-sunset b { font-size: 1rem; }
+.tw-temps b { font-weight: 700; }
 .tw-label { color: var(--ink-soft); }
 .tw-air { padding-left: 0; }
 .tw-air .aqi { gap: 10px; }
 .tw-air .aqi-face { width: 28px; height: 22px; }
 .tw-sunset { display: flex; align-items: center; gap: 6px; padding-left: 14px; border-left: 1px solid var(--line);
   font-size: 0.85rem; line-height: 1.2; color: var(--ink-soft); }
-.tw-sunset b { color: var(--ink); font-size: 0.95rem; }
+.tw-sunset b { color: var(--ink); }
 .sunset-icon { width: 22px; height: 22px; flex: none; color: var(--ink); }
 @media (max-width: 899px) { .today-wx { justify-content: flex-start; } }
 .updated { color: var(--ink-soft); font-size: 0.8rem; }
