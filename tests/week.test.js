@@ -198,7 +198,7 @@ test('the markup escapes calendar text and marks today and past days', () => {
   assert.ok(html.includes('Updated Mon 11:55 PM'));
   assert.ok(html.includes('70%'));
   assert.ok(html.includes('&quot;Home&quot;'), 'locations show, escaped');
-  assert.ok(einkDocument(snap).includes('Week of Nov 8 – 14'));
+  assert.ok(einkDocument(snap).includes('<span class="wk-of">Week of</span><span class="wk-range">Nov 8 – 14</span>'));
   assert.equal(esc(`a&'`), 'a&amp;&#39;');
 });
 
@@ -286,8 +286,10 @@ test("the header shows today's weather, air quality and sunset", () => {
   assert.match(head, /58°/);
   assert.match(head, /70%/);
   assert.match(head, /AQI 42/);
-  assert.match(head, /Sunset<br><b>5:01 PM<\/b>/);
-  assert.ok(head.indexOf('tw-air') > head.indexOf('tw-row') && head.indexOf('tw-sunset') > head.indexOf('tw-air'), 'AQI under the weather, sunset to the right');
+  assert.match(head, /Sunset<\/span> <b>5:01 PM<\/b>/);
+  // Three rows in order: temperature, conditions, air quality; sunset after them.
+  const order = ['tw-temps', 'tw-label', 'AQI 42', 'tw-sunset'].map((k) => head.indexOf(k));
+  assert.ok(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), `order: ${order}`);
   const columns = weekHtml(snap, { mode: 'eink' }).split('<div class="week">')[1];
   assert.doesNotMatch(columns, /AQI/, 'AQI is only in the header');
 });

@@ -6,7 +6,7 @@
 // Returns HTML strings. Every piece of calendar text goes through esc(), so
 // event titles can never be read as markup.
 
-import { showRain, longDate, stampLabel, aqiInfo, showAqi, AQI_WARN, clockTime } from './week.js';
+import { showRain, stampLabel, aqiInfo, showAqi, AQI_WARN, clockTime } from './week.js';
 
 // The e-ink renderer has no emoji font, so emoji would print as boxes there.
 export const plainText = (s) => String(s ?? '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, '').replace(/\s+/g, ' ').trim();
@@ -142,33 +142,48 @@ export function dayHtml(day, { today, mode }) {
 // rain chance, air quality and sunset.
 // Sunset: half sun on the horizon with the arrow pointing down (up = sunrise).
 const SUNSET = `<svg class="sunset-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 18a5.5 5.5 0 0 1 11 0M1.5 18h21M3.5 12.5l1.8 1.2M20.5 12.5l-1.8 1.2M6 21.5h12M12 1.5v7M8.8 5.6 12 8.8l3.2-3.2"/></svg>`;
+const THERMO = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6a3 3 0 0 1 6 0v12.2a6.2 6.2 0 1 1-6 0z"/><path d="M16 11v11"/><circle cx="16" cy="23" r="2.6" fill="currentColor" stroke="none"/><path d="M22 8h3M22 12h3M22 16h3"/></svg>`;
+
+// Today, three rows with their icons in one column: temperature (thermometer),
+// conditions and rain chance (weather icon), air quality (face). Sunset to the
+// right of all three.
 function todayHtml(day, mode) {
   if (!day) return '';
   const w = day.weather;
-  const row = [];
+  const rows = [];
+  const row = (icon, text, cls = '') => rows.push(
+    `<span class="tw-ic${cls}" aria-hidden="true">${icon}</span><span class="tw-val">${text}</span>`);
   if (w) {
-    row.push(`<span class="tw-icon" aria-hidden="true">${ICONS[w.icon] || ICONS.cloud}</span>`);
-    row.push(`<span class="tw-temps"><b>${esc(w.hi)}°</b><span class="lo"> / ${esc(w.lo)}°</span></span>`);
-    row.push(`<span class="tw-label">${esc(w.label)}</span>`);
-    if (showRain(w)) row.push(`<span class="rain">${DROP}${esc(w.rain)}%</span>`);
+    row(THERMO, `<span class="tw-temps"><b>${esc(w.hi)}°</b><span class="lo"> / ${esc(w.lo)}°</span></span>`);
+    row(ICONS[w.icon] || ICONS.cloud,
+      `<span class="tw-label">${esc(w.label)}</span>${showRain(w) ? `<span class="rain">${DROP}${esc(w.rain)}%</span>` : ''}`);
   }
-  // Air quality sits directly under the weather line; sunset to the right of both.
-  const air = aqiHtml(day.aqi, mode);
-  const main = row.length || air
-    ? `<div class="tw-main">${row.length ? `<div class="tw-row">${row.join('')}</div>` : ''}${air ? `<div class="tw-air">${air}</div>` : ''}</div>`
-    : '';
+  if (showAqi(day.aqi)) {
+    const a = aqiInfo(day.aqi);
+    const warn = a.aqi >= AQI_WARN ? ' aqi-warn' : '';
+    const word = mode === 'web' ? ` <span class="aqi-word">${esc(a.label)}</span>` : '';
+    row(aqiFace(a.level), `<span class="aqi aqi-${a.level}${warn}" title="Air quality: ${esc(a.label)}"><span>AQI ${a.aqi}${word}</span></span>`,
+      ` aqi-${a.level}${warn}`);
+  }
+  const main = rows.length ? `<div class="tw-grid">${rows.join('')}</div>` : '';
   const sunset = day.sunset
-    ? `<div class="tw-sunset">${SUNSET}<span>Sunset<br><b>${esc(clockTime(day.sunset))}</b></span></div>` : '';
+    ? `<div class="tw-sunset">${SUNSET}<span><span class="tw-sun-label">Sunset</span> <b>${esc(clockTime(day.sunset))}</b></span></div>` : '';
   if (!main && !sunset) return '';
   return `<div class="today-wx">${main}${sunset}</div>`;
+}
+
+// "Week of Nov 8 – 14" on two lines: "Week of", then the dates.
+function titleHtml(title) {
+  const m = String(title || '').match(/^(Week of)\s+(.*)$/);
+  return m ? `<span class="wk-of">${esc(m[1])}</span><span class="wk-range">${esc(m[2])}</span>` : esc(title);
 }
 
 // The whole week: header + seven days.
 export function weekHtml(snap, { mode = 'web', today = snap.as_of } = {}) {
   const warn = (snap.warnings || []).length
     ? `<p class="warnings">${snap.warnings.map(esc).join(' · ')}</p>` : '';
-  return `<header class="week-head"><div><h1>${esc(snap.title)}</h1>${warn}</div>` +
-    `<div class="head-right"><span class="today-long">${esc(longDate(today))}</span>` +
+  return `<header class="week-head"><div><h1>${titleHtml(snap.title)}</h1>${warn}</div>` +
+    `<div class="head-right">` +
     todayHtml(snap.days.find((d) => d.date === today), mode) +
     `<span class="updated">Updated ${esc(stampLabel(snap.built_at))}</span></div></header>` +
     `<div class="week">${snap.days.map((d) => dayHtml(d, { today, mode })).join('')}</div>`;
@@ -193,6 +208,13 @@ export function einkDocument(snap, { fontCss = '', today = snap.as_of } = {}) {
 // differently.
 const FIT_SCRIPT = `
 document.fonts.ready.then(() => {
+// The week title is drawn large; on a week with a long title and long weather
+// words it shrinks just enough to leave room for today's weather.
+const head = document.querySelector('.week-head'), h1 = head && head.querySelector('h1');
+if (h1) {
+  let size = parseFloat(getComputedStyle(h1).fontSize);
+  while (head.scrollWidth > head.clientWidth + 1 && size > 48) { size -= 2; h1.style.fontSize = size + 'px'; }
+}
 for (const day of document.querySelectorAll('.day')) {
   const list = day.querySelector('.events'); if (!list) continue;
   const rows = [...list.children]; let hidden = 0;
@@ -212,30 +234,27 @@ const EINK_CSS = `
 html, body { width: ${EINK_W}px; height: ${EINK_H}px; overflow: hidden; background: #fff; color: #000; }
 body { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; padding: 36px 40px 32px;
   display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
-.week-head { display: flex; justify-content: space-between; align-items: center;
+.week-head { display: flex; justify-content: space-between; align-items: center; gap: 40px;
   padding-bottom: 18px; border-bottom: 4px solid #000; }
-h1 { font-size: 60px; font-weight: 700; letter-spacing: -0.5px; line-height: 1; }
+h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02; white-space: nowrap; }
+.wk-of, .wk-range { display: block; }
+.wk-of { font-weight: 400; }
 .warnings { font-size: 22px; margin-top: 10px; color: #444; }
-.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.today-long { font-size: 40px; font-weight: 700; }
-.today-wx { display: flex; align-items: center; gap: 22px; font-size: 30px; white-space: nowrap; }
-.tw-main { display: flex; flex-direction: column; gap: 4px; }
-.tw-row { display: flex; align-items: center; gap: 16px; }
-.tw-icon svg { width: 52px; height: 52px; display: block; }
+.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.today-wx { display: flex; align-items: center; gap: 32px; font-size: 44px; white-space: nowrap; }
+.tw-grid { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 14px; row-gap: 4px; }
+.tw-ic { display: flex; justify-content: center; }
+.tw-ic svg { width: 56px; height: 56px; display: block; }
+.tw-val { display: flex; align-items: center; gap: 16px; }
 .tw-temps b { font-weight: 700; }
 /* One size for everything on today's line. */
-.today-wx .rain, .today-wx .aqi, .today-wx .tw-sunset, .today-wx .tw-sunset b { font-size: 30px; }
-.aqi { display: inline-flex; align-items: center; gap: 8px; }
-.aqi-face { width: 38px; height: 38px; flex: none; }
-.today-wx .drop { width: 22px; height: 22px; }
-.tw-air { padding-left: 0; }
-/* The AQI face sits in the weather icon's column, the number under the temperatures. */
-.tw-air .aqi { gap: 16px; }
-.tw-air .aqi-face { width: 52px; height: 42px; }
-.tw-air .aqi-warn > span:last-child { margin-left: -7px; }
+.today-wx .rain, .today-wx .aqi, .today-wx .tw-sunset, .today-wx .tw-sunset b { font-size: 44px; }
+.today-wx .drop { width: 32px; height: 32px; }
+.tw-val .aqi-warn > span:last-child { margin-left: -7px; }
 .tw-sunset { display: flex; align-items: center; gap: 10px; padding-left: 22px; border-left: 3px solid #000;
   font-size: 26px; line-height: 1.15; }
-.sunset-icon { width: 44px; height: 44px; flex: none; }
+.sunset-icon { width: 64px; height: 64px; flex: none; }
+.tw-sun-label { display: block; }
 .updated { font-size: 20px; color: #555; }
 .week { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); min-height: 0; }
 .day { display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 0 14px 0;

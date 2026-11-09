@@ -64,7 +64,8 @@ await page.waitForSelector('#view-signin:not([hidden])');
 // 2. The household sees the week, today marked, past days folded.
 await signIn(page, MEMBER);
 await page.waitForSelector('.day.today');
-assert.equal(await page.textContent('.week-head h1'), 'Week of Nov 8 – 14');
+assert.equal(await page.textContent('.week-head .wk-of'), 'Week of');
+assert.equal(await page.textContent('.week-head .wk-range'), 'Nov 8 – 14');
 assert.equal(await page.getAttribute('.day.today', 'data-date'), '2026-11-10');
 assert.equal(await page.locator('.day.past').count(), 2);
 assert.equal(await page.locator('.past-fold[open]').count(), 0);
