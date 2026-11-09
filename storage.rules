@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Rendered images are served to the TRMNL through the /api/image function,
+// never straight from Storage, so no browser or device gets direct access.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

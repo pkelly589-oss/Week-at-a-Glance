@@ -1,0 +1,204 @@
+/* Week at a Glance web page styles.
+ *
+ * Mobile-first: one stacked list of days, today first in view, past days
+ * folded. From 900 px wide the week becomes seven columns like the door
+ * display. Light and dark follow the device setting. Colours are defined once
+ * as variables below.  Requirements doc: Web view (mobile and desktop).
+ */
+
+/* ---- Colour and size tokens ------------------------------------------- */
+:root {
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --ink: #1b1d21;
+  --ink-soft: #676a70;
+  --line: #e2e0d8;
+  --accent: #1f2a37;        /* today, primary button */
+  --accent-ink: #ffffff;
+  --pete: #2d6a8f;          /* P badge */
+  --david: #b5651d;         /* D badge */
+  --allday: #eeece5;
+  --warn: #9a3b17;
+  --warn-soft: #fbece3;
+  --info-soft: #e8eef4;
+  --radius: 12px;
+  --tap: 44px;
+  --wx-fill: var(--surface);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18191b;
+    --surface: #222327;
+    --ink: #eeede9;
+    --ink-soft: #a3a39d;
+    --line: #34353a;
+    --accent: #e9e6dc;
+    --accent-ink: #18191b;
+    --pete: #7cb8dd;
+    --david: #f0a565;
+    --allday: #2c2d31;
+    --warn: #f19a72;
+    --warn-soft: #3a261d;
+    --info-soft: #232c36;
+  }
+}
+
+/* ---- Page frame -------------------------------------------------------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: env(safe-area-inset-top) 16px calc(32px + env(safe-area-inset-bottom));
+}
+@media (min-width: 900px) { .app { max-width: 1440px; padding-inline: 24px; } }
+[hidden] { display: none !important; }
+h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
+.muted { color: var(--ink-soft); }
+.small { font-size: 0.875rem; }
+.error { color: var(--warn); }
+.center { text-align: center; padding-top: 12vh; }
+.center p { max-width: 34ch; margin-inline: auto; }
+code { font-size: 0.85em; background: color-mix(in srgb, var(--ink) 8%, transparent); padding: 1px 4px; border-radius: 4px; }
+
+/* ---- Top bar and buttons ---------------------------------------------- */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0 10px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 650; }
+.mark { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.actions { display: flex; gap: 6px; }
+button { font: inherit; color: inherit; cursor: pointer; min-height: var(--tap); border-radius: 999px; padding: 0 16px; border: 1px solid transparent; }
+button:disabled { opacity: 0.6; cursor: progress; }
+.primary { background: var(--accent); color: var(--accent-ink); }
+.big { font-size: 1.05rem; padding: 0 24px; margin-top: 8px; }
+.ghost { background: transparent; border-color: var(--line); font-size: 0.9rem; padding: 0 14px; }
+.ghost:hover { background: var(--surface); }
+button:focus-visible, summary:focus-visible { outline: 3px solid var(--pete); outline-offset: 2px; }
+
+/* ---- Banners and toast ------------------------------------------------- */
+.banner { border-radius: var(--radius); padding: 10px 14px; margin: 0 0 10px; font-size: 0.92rem; }
+.banner.warn { background: var(--warn-soft); color: var(--warn); }
+.banner.info { background: var(--info-soft); }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px);
+  background: var(--accent); color: var(--accent-ink); padding: 10px 16px; border-radius: 999px;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 90vw; font-size: 0.92rem; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---- Week header ------------------------------------------------------- */
+.week-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 6px 0 14px; border-bottom: 2px solid var(--ink); margin-bottom: 12px; }
+.warnings { margin: 4px 0 0; color: var(--warn); font-size: 0.9rem; }
+.head-right { display: flex; flex-direction: column; align-items: flex-end; }
+.today-long { font-weight: 650; }
+.today-wx { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin: 4px 0; }
+.tw-main { display: flex; flex-direction: column; gap: 2px; }
+.tw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.tw-icon svg { width: 28px; height: 28px; display: block; }
+.tw-temps { font-size: 1.05rem; } .tw-temps b { font-weight: 700; }
+.tw-label { color: var(--ink-soft); }
+.tw-air { padding-left: 0; }
+.tw-air .aqi { gap: 10px; }
+.tw-air .aqi-face { width: 28px; height: 22px; }
+.tw-sunset { display: flex; align-items: center; gap: 6px; padding-left: 14px; border-left: 1px solid var(--line);
+  font-size: 0.85rem; line-height: 1.2; color: var(--ink-soft); }
+.tw-sunset b { color: var(--ink); font-size: 0.95rem; }
+.sunset-icon { width: 22px; height: 22px; flex: none; color: var(--ink); }
+@media (max-width: 899px) { .today-wx { justify-content: flex-start; } }
+.updated { color: var(--ink-soft); font-size: 0.8rem; }
+@media (max-width: 899px) { .head-right { align-items: flex-start; } }
+
+/* ---- Days: stacked on phones ------------------------------------------- */
+.week { display: flex; flex-direction: column; gap: 12px; }
+.day { background: var(--surface); border-radius: var(--radius); padding: 0 14px 12px; scroll-margin-top: 12px;
+  border: 1px solid var(--line); }
+.day-head { display: flex; align-items: baseline; gap: 8px; padding: 12px 0 6px; }
+.dow { font-weight: 750; text-transform: uppercase; letter-spacing: 0.04em; }
+.date { color: var(--ink-soft); }
+.today { border: 2px solid var(--accent); }
+.today .day-head { color: var(--accent); }
+.today-tag { margin-left: auto; font-size: 0.75rem; font-weight: 700; background: var(--accent); color: var(--accent-ink);
+  border-radius: 999px; padding: 2px 10px; }
+
+.wx { display: flex; align-items: center; gap: 10px; padding: 4px 0 10px; border-bottom: 1px solid var(--line); }
+.wx-icon svg { width: 40px; height: 40px; display: block; }
+.wx-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.temps { font-size: 1.15rem; } .temps b { font-weight: 700; } .lo { color: var(--ink-soft); }
+.wx-label { color: var(--ink-soft); font-size: 0.9rem; }
+.rain { display: inline-flex; align-items: center; gap: 3px; font-size: 0.9rem; font-weight: 600; color: var(--pete); }
+.drop { width: 12px; height: 12px; }
+.wx-none { color: var(--ink-soft); font-size: 0.9rem; }
+.wx-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.aqi { font-size: 0.85rem; font-weight: 650; white-space: nowrap; }
+.aqi-word { font-weight: 400; color: var(--ink-soft); }
+.aqi { display: inline-flex; align-items: center; gap: 5px; }
+.aqi-face { width: 20px; height: 20px; flex: none; }
+.aqi-moderate { color: var(--david); }
+.aqi-warn { color: var(--warn); }
+.aqi-warn .aqi-word { color: inherit; }
+.holidays { list-style: none; margin: 0; padding: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.holiday { display: flex; align-items: center; gap: 8px; border: 2px solid var(--accent); border-radius: 8px;
+  padding: 6px 10px; font-weight: 700; }
+.star { width: 15px; height: 15px; flex: none; color: var(--david); }
+.notices { list-style: none; margin: 0; padding: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.notice { display: flex; align-items: center; gap: 8px; background: var(--warn-soft); color: var(--warn);
+  border-radius: 8px; padding: 7px 10px; font-weight: 650; font-size: 0.92rem; }
+.bell { width: 16px; height: 16px; flex: none; }
+
+.events { list-style: none; margin: 0; padding: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.ev { border-radius: 8px; }
+.ev { display: grid; grid-template-columns: 1fr; padding: 6px 0; }
+.ev-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.time { font-weight: 700; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.time.allday { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+.title { display: block; font-size: 1rem; overflow-wrap: anywhere; }
+.span { display: block; color: var(--ink-soft); font-size: 0.82rem; }
+.ev-allday { background: var(--allday); padding: 6px 10px; }
+.loc { display: flex; align-items: flex-start; gap: 4px; color: var(--ink-soft); font-size: 0.88rem; margin-top: 2px; overflow-wrap: anywhere; }
+.pin { width: 13px; height: 13px; flex: none; margin-top: 3px; }
+.empty { color: var(--ink-soft); margin: 10px 0 0; font-size: 0.95rem; }
+
+.badges { display: inline-flex; gap: 4px; }
+.badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px;
+  font-size: 0.75rem; font-weight: 800; color: #fff; }
+.badge-p { background: var(--pete); }
+.badge-d { background: var(--david); }
+@media (prefers-color-scheme: dark) { .badge { color: #111; } }
+
+/* Past days fold away on phones; the summary line shows the count. */
+.past { background: transparent; }
+.past-fold > summary { cursor: pointer; padding: 12px 0 2px; list-style: none; color: var(--ink-soft); }
+.past-fold > summary::-webkit-details-marker { display: none; }
+.past-fold > summary::before { content: "▸ "; }
+.past-fold[open] > summary::before { content: "▾ "; }
+.past-body { opacity: 0.75; }
+
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 18px; }
+.legend .badge { margin-left: 6px; }
+.credits { margin-top: 6px; }
+
+/* ---- Seven columns on wide screens, like the door ---------------------- */
+@media (min-width: 900px) {
+  .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .day { border: 0; border-radius: 0; border-right: 1px solid var(--line); min-height: 60vh; padding: 0 12px 14px; }
+  .day:last-child { border-right: 0; }
+  .today { box-shadow: inset 0 0 0 2px var(--accent); }
+  .today .day-head { background: var(--accent); color: var(--accent-ink); margin: 0 -12px; padding-inline: 12px; }
+  .today .date { color: inherit; opacity: 0.8; }
+  .today-tag { display: none; }
+  /* Same height every day, so the event lists all start on one line. */
+  .wx { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; height: 128px; box-sizing: border-box; }
+  .wx-text { flex-direction: column; gap: 0; }
+  /* On the desktop, past days stay open like the e-ink, just quieter. */
+  .past-fold > summary { pointer-events: none; padding-top: 12px; }
+  .past-fold > summary::before, .past-fold[open] > summary::before { content: none; }
+  .past-fold > summary .muted { display: none; }
+  .past-fold .dow { color: var(--ink-soft); }
+}
+.credits a { color: inherit; }

@@ -1,0 +1,16 @@
+node_modules/
+.firebase/
+*-debug.log
+firebase-export-*/
+.DS_Store
+test-results/
+functions/shared/
+functions/node_modules/
+
+# Household settings and service-account keys: never commit.
+*.local.json
+*service-account*.json
+*firebase-adminsdk*.json
+
+# Temporary archives from setup: they contain household.local.json.
+_to_delete/

@@ -1,0 +1,16 @@
+{
+  "name": "week-at-a-glance-functions",
+  "private": true,
+  "description": "Nightly week build, PNG render and TRMNL device API for Week at a Glance.",
+  "type": "module",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.3.0",
+    "@sparticuz/chromium": "~153.0.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0",
+    "puppeteer-core": "~25.11.0",
+    "sharp": "^0.35.5"
+  }
+}

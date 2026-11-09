@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- Week at a Glance web page. app.js shows one of the views below: loading,
+     sign-in, "not on the list", or the week. The week itself is drawn by
+     lib/view.js, the same code that draws the e-ink display. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Week at a Glance</title>
+  <meta name="description" content="Our week: both calendars and the weather, Sunday to Saturday.">
+  <meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#18191b" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Week">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="6" width="24" height="22" rx="4"/><path d="M4 13h24M10 3v6M22 3v6M9 18h3M15 18h3M21 18h3M9 23h3M15 23h3"/></svg>
+        <span>Week at a Glance</span>
+      </div>
+      <div class="actions" id="actions" hidden>
+        <button class="ghost" id="refresh" title="Fetch the calendars and weather again now">Refresh now</button>
+        <button class="ghost" id="signout">Sign out</button>
+      </div>
+    </header>
+
+    <div id="banners"></div>
+
+    <main id="view-loading" class="center">
+      <p class="muted">Loading…</p>
+    </main>
+
+    <main id="view-signin" class="center" hidden>
+      <h1>What's on this week?</h1>
+      <p class="muted">Sign in with the Google account on your household's list.</p>
+      <button class="primary big" id="signin">Sign in with Google</button>
+      <p class="error" id="signin-error" hidden></p>
+    </main>
+
+    <main id="view-denied" class="center" hidden>
+      <h1>Not on the list yet</h1>
+      <p class="muted">You're signed in as <strong id="denied-email"></strong>, which isn't on this household's list. Ask the owner to add you, then reload.</p>
+      <button class="ghost" id="denied-signout">Sign out</button>
+    </main>
+
+    <main id="view-week" hidden>
+      <div id="week"></div>
+      <p class="legend muted small">
+        <span class="badge badge-p">P</span> Pete is going
+        <span class="badge badge-d">D</span> David is going
+      </p>
+      <p class="credits muted small">Weather and air quality: <a href="https://open-meteo.com/">Open-Meteo</a> (CAMS) and the National Weather Service.</p>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

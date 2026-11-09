@@ -1,0 +1,21 @@
+{
+  "name": "week-at-a-glance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The household's Sunday–Saturday week at a glance: both calendars and the weather, on a TRMNL X by the front door and on a web page.",
+  "type": "module",
+  "scripts": {
+    "shared": "node scripts/copy-shared.mjs",
+    "dev": "npm run shared && firebase emulators:start --project demo-week-at-a-glance",
+    "test": "npm run shared && node --test tests/week.test.js && firebase emulators:exec --project demo-week-at-a-glance --only firestore \"node --test --test-concurrency=1 tests/functions.test.js tests/rules.test.js\"",
+    "test:e2e": "npm run shared && firebase emulators:exec --project demo-week-at-a-glance --only auth,firestore,hosting \"node tests/e2e.mjs\"",
+    "connect-google": "node scripts/connect-google.mjs",
+    "deploy": "firebase deploy --only hosting,firestore,storage,functions"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.34.1",
+    "playwright": "^1.63.0"
+  }
+}

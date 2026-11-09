@@ -1,0 +1,49 @@
+rules_version = '2';
+
+// Week at a Glance security rules.
+//
+// Same household allowlist as Fridge Board: one document per Google account in
+// `allowlist`, keyed by lowercase email, with role "owner" or "member". The
+// list lives in the database, never in this public repository.
+//
+// The page only reads. Everything else is written by the Cloud Functions,
+// which bypass these rules. Calendar settings, device keys and image tokens
+// can't be read from a browser at all.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isMember() {
+      return signedIn() && exists(/databases/$(database)/documents/allowlist/$(myEmail()));
+    }
+
+    // Each person may check their own entry (to know whether they're in).
+    // Managing the list is done in the Firebase console.
+    match /allowlist/{email} {
+      allow get: if signedIn() && email == myEmail();
+    }
+
+    // Week snapshots and the build/device status: read-only for the household.
+    match /weeks/{week} {
+      allow read: if isMember();
+    }
+    match /status/{doc} {
+      allow read: if isMember();
+    }
+
+    // config, devices, renders and anything else: functions only.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
