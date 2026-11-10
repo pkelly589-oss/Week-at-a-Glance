@@ -5,7 +5,7 @@ import {
   isoDate, startOfDay, windowOf, rangeTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
-  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow,
+  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow, REFRESH_HOURS, buildDue,
 } from '../public/lib/week.js';
 import { weekHtml, einkDocument, esc, plainText, energyHtml, creditsHtml } from '../public/lib/view.js';
 import { sampleEnergy, sampleSnapshot } from './fixtures.js';
@@ -417,15 +417,21 @@ test("a Gmail-created copy's automatic privacy doesn't hide the real event", () 
   assert.equal(buildEvents([{ person: 'pete', events: [ev({ summary: 'Flight to NYC', eventType: 'fromGmail', visibility: 'private' })] }], PEOPLE).length, 1);
 });
 
-test('refreshes come on the hour from 7am to midnight, across the clock changes', () => {
+test('refreshes come every 30 minutes from 7am to midnight, across the clock changes', () => {
   const t = (s) => Date.parse(s);
+  assert.equal(REFRESH_HOURS.length, 35);
   assert.equal(secondsToNextRefresh(t('2026-11-10T00:00:30-08:00')), 7 * 3600); // asleep until 7am
   assert.equal(secondsToNextRefresh(t('2026-11-10T11:59:00-08:00')), 60 + 30);
-  assert.equal(secondsToNextRefresh(t('2026-11-10T18:00:00-08:00')), 3600 + 30);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T18:00:00-08:00')), 1800 + 30);
   assert.equal(secondsToNextRefresh(t('2026-11-10T23:30:00-08:00')), 1800 + 30); // midnight
+  assert.equal(secondsToNextRefresh(t('2026-11-10T23:29:00-08:00')), 60 + 30);  // 11:30pm
+  // The :25/:55 schedule builds only ahead of a refresh.
+  assert.equal(buildDue(t('2026-11-10T06:25:00-08:00')), false);
+  for (const hm of ['06:55', '07:25', '12:25', '23:25', '23:55']) assert.equal(buildDue(t(`2026-11-10T${hm}:00-08:00`)), true, hm);
   // The night the clocks go back (Nov 1, 2026), midnight to 7am is 8 hours.
   assert.equal(secondsToNextRefresh(t('2026-11-01T00:00:00-07:00')), 8 * 3600 + 30);
   assert.equal(new Date(lastRefreshAt(t('2026-11-10T09:20:00-08:00'))).toISOString(), '2026-11-10T17:00:00.000Z');
+  assert.equal(new Date(lastRefreshAt(t('2026-11-10T09:40:00-08:00'))).toISOString(), '2026-11-10T17:30:00.000Z');
   assert.equal(new Date(lastRefreshAt(t('2026-11-10T03:00:00-08:00'))).toISOString(), '2026-11-10T08:00:00.000Z');
 });
 

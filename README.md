@@ -3,8 +3,8 @@
 The household's next week on one screen (yesterday, today and the five days
 after): both Google Calendars
 merged into a plain list per day, with the weather for each day. It is shown
-on a TRMNL X e-ink display by the front door, refreshed every hour from 7am to
-midnight, and on a web page for phones and computers.
+on a TRMNL X e-ink display by the front door, refreshed every 30 minutes from 7am
+to midnight, and on a web page for phones and computers.
 
 Sibling to [Fridge Board](https://github.com/pkelly589-oss/fridge-board), and
 built the same way: plain HTML/CSS/JS on Firebase, a household allowlist in
@@ -71,21 +71,22 @@ Firestore, no secrets and no email addresses in the repository.
 
 ```
 Pete's calendar ──┐
-David's calendar ─┼─► nightlyBuild (hourly at :55, 6:55–23:55 PT) ──► weeks/{first day} ──► web page
+David's calendar ─┼─► nightlyBuild (every 30 min, 6:55–23:55 PT) ──► weeks/{first day} ──► web page
 Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
                                    │
                                          └─► Storage PNG ──► /api/display ──► TRMNL X (wakes 00:00, 12:00)
 ```
 
-- **nightlyBuild** runs hourly at :55 from 6:55am to 11:55pm Pacific (despite
-  its name, kept so the deployed function isn't replaced); the 23:55 run builds for
+- **nightlyBuild** runs at :25 and :55 from 6:55am to 11:55pm Pacific, 5
+  minutes before each refresh (it's scheduled from 6:25, which does nothing;
+  the name is kept so the deployed function isn't replaced); the 23:55 run builds for
   the day about to begin, so the window moves on by a day at midnight. It retries 3 times,
   2 minutes apart. If it can't read any calendar, the display keeps its last picture.
 - **The e-ink image** is the same markup as the web page (`public/lib/view.js`),
   drawn by headless Chrome at 1872 × 1404 and reduced to 16 greys (about 55 KB).
 - **The TRMNL X** talks to this project as its own server ("BYOS"). Each time
-  it wakes it's told to sleep until just after the next hour, or from midnight
-  until 7am. If that refresh's picture isn't ready, it checks back every 15
+  it wakes it's told to sleep until just after the next half hour, or from
+  midnight until 7am. If that refresh's picture isn't ready, it checks back every 15
   minutes (never past the next refresh) for up to 6 hours.
 - **Air quality:** the header's AQI is AirNow's (EPA) current reading from
   nearby monitors (its current-observations service, which replaced the one
@@ -139,7 +140,7 @@ All written by the functions; browsers only read `weeks` and `status`.
 | `devices/{MAC}` | An approved display and its API key |
 | `renders/{name}` | Where each PNG is stored and the token in its URL |
 | `private/enphase` | Enphase's current access and refresh tokens (they rotate, so they're kept here, not in Secret Manager) |
-| `private/enphase_cache` | Yesterday's raw Enphase totals (refetched only at 23:55 and 11:55) and the battery level (reused for 30 minutes), so builds stay within the free API allowance |
+| `private/enphase_cache` | Yesterday's raw Enphase totals (refetched only at 23:55 and 11:55) and the battery level (reused for 55 minutes, so fetched about hourly), so builds stay within the free API allowance |
 
 Snapshots and images older than 14 days are deleted automatically.
 
@@ -254,8 +255,8 @@ it stays connected as long as the builds run. If it lapses (the web page warns
 
 The figures are for the last full day ("yesterday"). At the 23:55 build that
 day is just ending, so its home use can be a few minutes short; the 11:55
-build corrects it. The other hourly builds fetch only the battery level, one
-call each, and Refresh now reuses a battery level under 30 minutes old.
+build corrects it. The battery level is fetched about once an hour (one call)
+and reused in between, by the 30-minute builds and by Refresh now.
 
 #### AirNow (measured air quality)
 
@@ -386,11 +387,11 @@ image is ready.
    connect". In Firestore, create `devices/<that MAC>` with any field (for
    example `approved` = `true`).
 3. Reset or wake the device. It fetches a key, shows the week, and from then on
-   wakes just after each hour from 7am to midnight, and sleeps through the night.
+   wakes every 30 minutes from 7am to midnight, and sleeps through the night.
 
-The device refreshes 18 times a day. At an estimated 0.5–1.5 mAh per refresh,
-plus its sleep draw, the 12,000 mAh battery should last about a year or more
-between charges (an estimate: TRMNL doesn't publish per-refresh figures for the
+The device refreshes 35 times a day. At an estimated 0.5–1.5 mAh per refresh,
+plus its sleep draw, the 12,000 mAh battery should last roughly 7 months to
+1½ years between charges (an estimate: TRMNL doesn't publish per-refresh figures for the
 X). The web page warns below 20%.
 
 ### 9. Optional: email when a build fails
@@ -422,7 +423,7 @@ npx firebase functions:log --only refreshNow -n 40     # or nightlyBuild, device
 | The AQI differs from AirNow's website | Hover over the AQI on the web page: "(AirNow, …)" means it's AirNow's reading for that area, from the hour before the update. No "(AirNow)" means AirNow had nothing recent and Open-Meteo's forecast was used. `npx firebase functions:log --only nightlyBuild` shows "AirNow failed" with the reason (a 401 means the key is wrong) |
 | Warning *"Enphase access expired"* | Run `npm run connect-enphase`, then `npm run deploy` |
 | Warning *"Solar data unavailable"* | Enphase didn't answer; the strip shows the last figures, marked "earlier". `npx firebase functions:log --only nightlyBuild` shows which call failed (a 401/403 means an Access Control box is missing from the Enphase app) |
-| A change in `config/household` doesn't show | It applies at the next hourly build (at :55), or tap Refresh now |
+| A change in `config/household` doesn't show | It applies at the next build (every 30 minutes, at :25 and :55), or tap Refresh now |
 | Code changes don't show | Run `npm run deploy` (or `npx firebase deploy --only functions` for build and display changes only), then Refresh now |
 
 ## Local development

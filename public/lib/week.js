@@ -140,9 +140,10 @@ export function windowOf(iso) {
   };
 }
 
-// The display refreshes every hour from 7am to midnight Pacific, and sleeps
-// from midnight to 7am. The build runs 5 minutes before each refresh.
-export const REFRESH_HOURS = [0, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+// The display refreshes every 30 minutes from 7am to midnight Pacific, and
+// sleeps from midnight to 7am. Hours of the day, so 7.5 is 7:30. The build
+// runs 5 minutes before each refresh.
+export const REFRESH_HOURS = [0, ...Array.from({ length: 34 }, (_, i) => 7 + i / 2)];
 
 // The instant a Pacific date reaches a given hour, DST-safe.
 export function zonedTime(iso, hour) {
@@ -166,6 +167,10 @@ export function secondsToNextRefresh(ms, hours = REFRESH_HOURS, marginSec = 30) 
   const next = Math.min(...refreshPoints(ms, hours).filter((t) => t > ms));
   return Math.max(60, Math.ceil((next - ms) / 1000) + marginSec);
 }
+
+// The build runs on a :25/:55 schedule from 6:25; it does its work only when
+// a refresh is due within 10 minutes (so 6:25, 35 minutes before 7am, is skipped).
+export const buildDue = (ms, hours = REFRESH_HOURS) => secondsToNextRefresh(ms, hours, 0) <= 10 * 60;
 
 // Kept for midnight-only use.
 export const secondsToMidnight = (ms, marginSec = 30) => secondsToNextRefresh(ms, [0], marginSec);

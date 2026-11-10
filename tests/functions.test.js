@@ -287,19 +287,19 @@ test('an approved display gets a key, then the latest image and a sleep until 7a
   assert.equal((await call(handler, { path: u.pathname, query: { t: 'guess' } })).code, 404);
 });
 
-test("the display refreshes hourly from 7am to midnight, and retries if that refresh's image isn't ready", () => {
+test("the display refreshes every 30 minutes from 7am to midnight, and retries if that refresh's image isn't ready", () => {
   const at = (t, d = '2026-11-10') => Date.parse(`${d}T${t}-08:00`);
-  // Fresh images: sleep until the next hour (or, after midnight, until 7am).
+  // Fresh images: sleep until the next half hour (or, after midnight, until 7am).
   assert.equal(refreshRate(at('00:00:30'), at('23:55:00', '2026-11-09')), 7 * 3600);
-  assert.equal(refreshRate(at('12:00:30'), at('11:55:00')), 3600);
-  assert.equal(refreshRate(at('15:00:00'), at('14:56:00')), 3600 + 30);
-  // The noon build hasn't landed: check back in 15 minutes.
-  assert.equal(refreshRate(at('12:00:30'), at('10:55:00')), RETRY_SECONDS);
-  // ...but never past the next hour's refresh.
-  assert.equal(refreshRate(at('12:50:00'), at('10:55:00')), 600 + 30);
+  assert.equal(refreshRate(at('12:00:30'), at('11:55:00')), 1800);
+  assert.equal(refreshRate(at('15:30:00'), at('15:25:00')), 1800 + 30);
+  // The 12:30 build hasn't landed: check back in 15 minutes...
+  assert.equal(refreshRate(at('12:30:30'), at('11:55:00')), RETRY_SECONDS);
+  // ...but never past the next refresh.
+  assert.equal(refreshRate(at('12:50:00'), at('11:55:00')), 600 + 30);
   // The midnight build failed: retry through the night for 6 hours, then wait for 7am.
-  assert.equal(refreshRate(at('03:00:00'), at('22:55:00', '2026-11-09')), RETRY_SECONDS);
-  assert.equal(refreshRate(at('06:30:00'), at('22:55:00', '2026-11-09')), 1800 + 30);
+  assert.equal(refreshRate(at('03:00:00'), at('23:25:00', '2026-11-09')), RETRY_SECONDS);
+  assert.equal(refreshRate(at('06:30:00'), at('23:25:00', '2026-11-09')), 1800 + 30);
   assert.equal(refreshRate(at('00:00:30'), undefined), RETRY_SECONDS);
   assert.equal(batteryPercent('4.2'), 100);
   assert.equal(batteryPercent('3.4'), 0);
@@ -357,8 +357,13 @@ test('energy: yesterday\'s Enphase totals land in the snapshot, tokens rotate, r
   assert.equal((await build({ fetch: again, now: NOW + 10 * 6e4 })).energy.solar_kwh, 18.4);
   assert.equal(again.enphaseCalls().length, 0);
 
-  // An hour later (a Refresh now at 00:55): yesterday's totals are kept and
-  // only the battery level is fetched, one call.
+  // Half an hour later: everything reused, no calls.
+  const half = fakeFetch();
+  await build({ fetch: half, now: NOW + 30 * 6e4 });
+  assert.equal(half.enphaseCalls().length, 0);
+
+  // An hour later: yesterday's totals are kept and only the battery level is
+  // fetched, one call.
   const hourly = fakeFetch();
   await build({ fetch: hourly, now: NOW + 36e5 });
   assert.deepEqual(hourly.enphaseCalls().map((c) => new URL(c).pathname.split('/').pop()), ['battery']);

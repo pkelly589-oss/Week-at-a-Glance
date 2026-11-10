@@ -17,7 +17,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { runBuild, recordFailure } from './src/build.js';
 import { renderPng } from './src/render.js';
 import { makeDeviceHandler } from './src/device.js';
-import { TZ, isoDate } from './shared/week.js';
+import { TZ, isoDate, buildDue } from './shared/week.js';
 
 // Oakland: keep everything in the region nearest home.
 setGlobalOptions({ region: 'us-west1', maxInstances: 2 });
@@ -62,16 +62,17 @@ async function build({ asOf, manual }) {
   }
 }
 
-// Hourly at :55 from 6:55am to 11:55pm, so each image is ready before the
-// device wakes on the hour from 7am to midnight. The 23:55 run builds for the
-// day about to begin. A failed run is retried up to 3 times,
+// At :25 and :55 from 6:55am to 11:55pm, so each image is ready before the
+// device wakes every 30 minutes from 7am to midnight. The schedule starts at
+// 6:25, which does nothing. The 23:55 run builds for the day about to begin. A failed run is retried up to 3 times,
 // 2 minutes apart. (Still called nightlyBuild so the deployed function keeps
 // its name.)
 export const nightlyBuild = onSchedule({
   ...BUILD_OPTS,
-  schedule: '55 6-23 * * *', timeZone: TZ,
+  schedule: '25,55 6-23 * * *', timeZone: TZ,
   retryCount: 3, minBackoffSeconds: 120, maxBackoffSeconds: 120,
 }, async () => {
+  if (!buildDue(Date.now())) return;
   await build({ asOf: isoDate(Date.now() + 10 * 60 * 1000), manual: false });
 });
 
