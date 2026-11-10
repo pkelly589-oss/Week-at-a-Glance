@@ -80,7 +80,7 @@ function currentConditions(sky, airNow, modelAqi) {
   return {
     ...(sky || {}), aqi,
     aqi_source: airNow ? 'airnow' : aqi != null ? 'open-meteo' : null,
-    ...(airNow ? { aqi_area: airNow.area } : {}),
+    ...(airNow ? { aqi_area: airNow.area, aqi_at: airNow.at } : {}),
   };
 }
 

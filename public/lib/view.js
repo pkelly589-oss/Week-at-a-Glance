@@ -249,6 +249,24 @@ export function weekHtml(snap, { mode = 'web', today = snap.as_of } = {}) {
     (mode === 'eink' ? energyHtml(snap.energy) : '');
 }
 
+// The credit line under the week: which service each part came from, naming
+// the source of the AQI in the header for this snapshot.
+export function creditsHtml(snap) {
+  const om = '<a href="https://open-meteo.com/">Open-Meteo</a>';
+  const an = '<a href="https://www.airnow.gov/">AirNow</a>';
+  const cur = snap?.current;
+  let air;
+  if (cur?.aqi_source === 'airnow') {
+    const when = cur.aqi_at ? `, ${esc(clockTime(cur.aqi_at))} reading` : '';
+    air = `${an} (EPA)${cur.aqi_area ? `, ${esc(cur.aqi_area)}` : ''}${when}`;
+  } else if (cur?.aqi_source === 'open-meteo') {
+    air = `${om} (CAMS forecast; AirNow had no recent reading)`;
+  } else {
+    air = `${an} (EPA), or ${om} (CAMS) when AirNow has no recent reading`;
+  }
+  return `Weather: ${om} and the National Weather Service. Air quality now: ${air}.`;
+}
+
 // ---------------------------------------------------------------------------
 // The e-ink page: a complete 1872 × 1404 document for the headless browser.
 // ---------------------------------------------------------------------------

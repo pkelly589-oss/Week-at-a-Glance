@@ -7,7 +7,7 @@ import {
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
   parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow,
 } from '../public/lib/week.js';
-import { weekHtml, einkDocument, esc, plainText, energyHtml } from '../public/lib/view.js';
+import { weekHtml, einkDocument, esc, plainText, energyHtml, creditsHtml } from '../public/lib/view.js';
 import { sampleEnergy, sampleSnapshot } from './fixtures.js';
 
 const PETE = 'pete@example.com', DAVID = 'david@example.com';
@@ -545,4 +545,13 @@ test('AirNow: the highest pollutant AQI, recent readings only', () => {
   // The retired service's field names still read.
   assert.deepEqual(parseAirNow([{ DateObserved: '2026-11-10 ', HourObserved: 7, ReportingArea: 'Oakland', ParameterName: 'O3', AQI: 30 }], now),
     { aqi: 30, area: 'Oakland', at: seven });
+});
+
+test('the credit line names where the AQI came from', () => {
+  const at = Date.parse('2026-11-10T08:00:00-08:00');
+  assert.match(creditsHtml({ current: { aqi: 28, aqi_source: 'airnow', aqi_area: 'Oakland', aqi_at: at } }),
+    /Air quality now: <a [^>]+>AirNow<\/a> \(EPA\), Oakland, 8:00 AM reading\./);
+  assert.match(creditsHtml({ current: { aqi: 20, aqi_source: 'open-meteo' } }), /CAMS forecast; AirNow had no recent reading/);
+  assert.match(creditsHtml({}), /AirNow<\/a> \(EPA\), or/);
+  assert.match(creditsHtml({ current: { aqi_source: 'airnow', aqi_area: '<b>' } }), /&lt;b&gt;/);
 });

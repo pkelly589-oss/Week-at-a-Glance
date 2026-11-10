@@ -24,7 +24,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js';
 import { FIREBASE_CONFIG, EMULATOR_CONFIG } from './firebase-config.js';
 import { isoDate, stampLabel, windowOf } from './lib/week.js';
-import { weekHtml, esc } from './lib/view.js';
+import { weekHtml, esc, creditsHtml } from './lib/view.js';
 
 // ---------------------------------------------------------------------------
 // Firebase setup
@@ -155,6 +155,7 @@ function render() {
     return;
   }
   $('week').innerHTML = weekHtml(state.week, { mode: 'web', today });
+  $('credits').innerHTML = creditsHtml(state.week);
   openPastOnDesktop();
   // Mobile: start at today (Web view: "auto-scrolled to today").
   if (!state.scrolled) {

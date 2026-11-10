@@ -85,6 +85,9 @@ assert.equal(await page.locator('.day.today .ev', { hasText: 'Compost' }).locato
 // Home energy strip under the header.
 assert.match(await page.textContent('.energy'), /Yesterday’s energy.*Solar 18\.4 kWh.*Self-powered 86%.*Battery 64%/);
 
+// The credit line says where the header's AQI came from (the fixture has none named).
+assert.match(await page.textContent('#credits'), /Air quality now: AirNow \(EPA\), or Open-Meteo/);
+
 // 4. Low-battery banner.
 assert.match(await page.textContent('#banners'), /battery is at about 14%/);
 await shot(page, 'web-2-phone');
