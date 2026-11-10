@@ -140,10 +140,11 @@ export function windowOf(iso) {
   };
 }
 
-// The display refreshes every 30 minutes from 7am to midnight Pacific, and
-// sleeps from midnight to 7am. Hours of the day, so 7.5 is 7:30. The build
-// runs 5 minutes before each refresh.
-export const REFRESH_HOURS = [0, ...Array.from({ length: 34 }, (_, i) => 7 + i / 2)];
+// The display refreshes every 30 minutes from 7am to 11:30pm Pacific, then
+// at 12:10am with the new day, and sleeps until 7am. Hours of the day, so 7.5
+// is 7:30. Each picture is built a few minutes before: at :25 and :55, and at
+// 12:05am for the new day (after midnight, so the day just ended is complete).
+export const REFRESH_HOURS = [10 / 60, ...Array.from({ length: 34 }, (_, i) => 7 + i / 2)];
 
 // The instant a Pacific date reaches a given hour, DST-safe.
 export function zonedTime(iso, hour) {
@@ -168,9 +169,16 @@ export function secondsToNextRefresh(ms, hours = REFRESH_HOURS, marginSec = 30) 
   return Math.max(60, Math.ceil((next - ms) / 1000) + marginSec);
 }
 
-// The build runs on a :25/:55 schedule from 6:25; it does its work only when
-// a refresh is due within 10 minutes (so 6:25, 35 minutes before 7am, is skipped).
-export const buildDue = (ms, hours = REFRESH_HOURS) => secondsToNextRefresh(ms, hours, 0) <= 10 * 60;
+// The build is scheduled at :05, :25 and :55 of the hours it may be needed;
+// it does its work only when a refresh is due within 6 minutes (so 12:05am,
+// 6:55am and every :25 and :55 up to 11:25pm build; 11:55pm, 6:25am and the
+// :05s of the day don't).
+export const buildDue = (ms, hours = REFRESH_HOURS) => secondsToNextRefresh(ms, hours, 0) <= 6 * 60;
+
+// The picture built after midnight is shown until 7am: before about 6:50am
+// its weather is labelled with the time it was read, not "now".
+export const overnightBuild = (builtAt, asOf) =>
+  builtAt != null && (isoDate(builtAt) !== asOf || builtAt < zonedTime(asOf, 6) + 50 * 6e4);
 
 // Kept for midnight-only use.
 export const secondsToMidnight = (ms, marginSec = 30) => secondsToNextRefresh(ms, [0], marginSec);

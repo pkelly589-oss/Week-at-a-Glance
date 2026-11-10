@@ -195,8 +195,8 @@ export async function airNowCurrent(apiKey, { lat, lon }, fetch, now = Date.now(
 // records which connect it came from, so reconnecting starts a fresh chain.
 //
 // Free "Watt" plan: 10 calls a minute, 1,000 a month. Yesterday's totals (5
-// calls) are fetched only by the first build of a day (23:55) and again after
-// 11:50, when the day's data is complete. The battery level (1 call) is
+// calls) are fetched only by the first build of a day (12:05am) and again
+// after 11:50am, by when any late readings from the house are in. The battery level (1 call) is
 // reused for 55 minutes, so it's fetched at about every other 30-minute build.
 // About 28 calls a day, 870 a month, leaving room for "Refresh now".
 

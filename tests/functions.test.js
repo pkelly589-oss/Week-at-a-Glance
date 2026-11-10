@@ -256,9 +256,9 @@ test('an unknown display is refused at setup and shown on the page for approval'
 
 test('an approved display gets a key, then the latest image and a sleep until 7am', async () => {
   const bucket = fakeBucket();
-  await build({ bucket });
+  await build({ bucket, now: Date.parse('2026-11-10T00:05:00-08:00') });
   await db.doc(`devices/${MAC}`).set({ approved: true });
-  const now = Date.parse('2026-11-10T00:00:30-08:00');
+  const now = Date.parse('2026-11-10T00:10:30-08:00');
   const handler = makeDeviceHandler({ db, bucket, now: () => now });
 
   const setup = await call(handler, { path: '/api/setup', headers: { ID: MAC } });
@@ -274,7 +274,7 @@ test('an approved display gets a key, then the latest image and a sleep until 7a
   const status = (await db.doc('status/latest').get()).data();
   assert.equal(disp.body.status, 0);
   assert.equal(disp.body.filename, status.image);
-  assert.equal(disp.body.refresh_rate, 7 * 3600); // 00:00:30 to 7am, plus the 30 s margin
+  assert.equal(disp.body.refresh_rate, 7 * 3600 - 630 + 30); // 12:10:30am to 7am, plus the 30 s margin
   assert.equal(typeof disp.body.refresh_rate, 'number');
   assert.ok(disp.body.image_url.startsWith(`https://week.example.web.app/api/image/${status.image}.png?t=`));
   assert.equal((await db.doc('status/device').get()).data().battery_pct, 25);
@@ -289,18 +289,19 @@ test('an approved display gets a key, then the latest image and a sleep until 7a
 
 test("the display refreshes every 30 minutes from 7am to midnight, and retries if that refresh's image isn't ready", () => {
   const at = (t, d = '2026-11-10') => Date.parse(`${d}T${t}-08:00`);
-  // Fresh images: sleep until the next half hour (or, after midnight, until 7am).
-  assert.equal(refreshRate(at('00:00:30'), at('23:55:00', '2026-11-09')), 7 * 3600);
+  // Fresh images: sleep until the next half hour (or, after 12:10am, until 7am).
+  assert.equal(refreshRate(at('00:10:30'), at('00:05:00')), 7 * 3600 - 630 + 30);
+  assert.equal(refreshRate(at('23:30:30', '2026-11-09'), at('23:25:00', '2026-11-09')), 40 * 60);
   assert.equal(refreshRate(at('12:00:30'), at('11:55:00')), 1800);
   assert.equal(refreshRate(at('15:30:00'), at('15:25:00')), 1800 + 30);
   // The 12:30 build hasn't landed: check back in 15 minutes...
   assert.equal(refreshRate(at('12:30:30'), at('11:55:00')), RETRY_SECONDS);
   // ...but never past the next refresh.
   assert.equal(refreshRate(at('12:50:00'), at('11:55:00')), 600 + 30);
-  // The midnight build failed: retry through the night for 6 hours, then wait for 7am.
+  // The 12:05am build failed: retry through the night for 6 hours, then wait for 7am.
   assert.equal(refreshRate(at('03:00:00'), at('23:25:00', '2026-11-09')), RETRY_SECONDS);
   assert.equal(refreshRate(at('06:30:00'), at('23:25:00', '2026-11-09')), 1800 + 30);
-  assert.equal(refreshRate(at('00:00:30'), undefined), RETRY_SECONDS);
+  assert.equal(refreshRate(at('00:10:30'), undefined), RETRY_SECONDS);
   assert.equal(batteryPercent('4.2'), 100);
   assert.equal(batteryPercent('3.4'), 0);
   assert.equal(batteryPercent(undefined), null);

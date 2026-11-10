@@ -35,8 +35,8 @@ export function batteryPercent(volts) {
   return Math.max(0, Math.min(100, Math.round(((v - 3.4) / (4.2 - 3.4)) * 100)));
 }
 
-// How long the device should sleep: until the next refresh (on the hour from
-// 7am to midnight). If the image for the latest refresh isn't there yet (the
+// How long the device should sleep: until the next refresh (every 30 minutes
+// from 7am to 11:30pm, and 12:10am). If the image for the latest refresh isn't there yet (the
 // build failed or is still retrying), check back every 15 minutes for up to 6
 // hours after it, never sleeping past the next refresh.
 export function refreshRate(now, latestBuiltAt) {

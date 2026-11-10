@@ -6,7 +6,7 @@
 // Returns HTML strings. Every piece of calendar text goes through esc(), so
 // event titles can never be read as markup.
 
-import { showRain, stampLabel, aqiInfo, showAqi, AQI_WARN, clockTime, isoDate } from './week.js';
+import { showRain, stampLabel, aqiInfo, showAqi, AQI_WARN, clockTime, overnightBuild } from './week.js';
 
 // The e-ink renderer has no emoji font, so emoji would print as boxes there.
 export const plainText = (s) => String(s ?? '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, '').replace(/\s+/g, ' ').trim();
@@ -160,7 +160,7 @@ const THERMO = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strok
 // right of all three.
 // The header: conditions at the last update (temperature, sky, AQI) when the
 // snapshot has them, else today's forecast; and the sunset. "now" becomes
-// "at 11:55 PM" for the late-night build, shown until the morning.
+// "at 12:05 AM" for the overnight build, shown until the morning.
 function todayHtml(day, mode, snap) {
   if (!day) return '';
   const cur = snap?.current && snap.as_of === day.date ? snap.current : null;
@@ -169,7 +169,7 @@ function todayHtml(day, mode, snap) {
   const row = (icon, text, cls = '') => rows.push(
     `<span class="tw-ic${cls}" aria-hidden="true">${icon}</span><span class="tw-val">${text}</span>`);
   if (cur?.temp != null) {
-    const when = snap.built_at && isoDate(snap.built_at) !== snap.as_of ? `at ${clockTime(snap.built_at)}` : 'now';
+    const when = overnightBuild(snap.built_at, snap.as_of) ? `at ${clockTime(snap.built_at)}` : 'now';
     row(THERMO, `<span class="tw-temps"><b>${esc(cur.temp)}°</b><span class="lo tw-now"> ${esc(when)}</span></span>`);
     row(ICONS[cur.icon] || ICONS.cloud, `<span class="tw-label">${esc(cur.label)}</span>`);
   } else if (w) {

@@ -1,6 +1,6 @@
 // Cloud Functions for Week at a Glance.
 //
-//   nightlyBuild  23:55 Pacific every day: builds the coming day's week and image
+//   nightlyBuild  every 30 minutes 6:55am–11:25pm and at 12:05am Pacific: builds the week and image
 //   refreshNow    the web page's "Refresh now" button (signed-in household only)
 //   device        the TRMNL X's API, served at /api/** through Firebase Hosting
 //
@@ -62,18 +62,19 @@ async function build({ asOf, manual }) {
   }
 }
 
-// At :25 and :55 from 6:55am to 11:55pm, so each image is ready before the
-// device wakes every 30 minutes from 7am to midnight. The schedule starts at
-// 6:25, which does nothing. The 23:55 run builds for the day about to begin. A failed run is retried up to 3 times,
+// At :25 and :55 from 6:55am to 11:25pm, so each image is ready before the
+// device wakes every 30 minutes from 7am to 11:30pm, and at 12:05am for the
+// new day (the device wakes at 12:10am). The schedule also fires at other
+// :05/:25/:55 times in those hours; those runs do nothing (buildDue). A failed run is retried up to 3 times,
 // 2 minutes apart. (Still called nightlyBuild so the deployed function keeps
 // its name.)
 export const nightlyBuild = onSchedule({
   ...BUILD_OPTS,
-  schedule: '25,55 6-23 * * *', timeZone: TZ,
+  schedule: '5,25,55 0,6-23 * * *', timeZone: TZ,
   retryCount: 3, minBackoffSeconds: 120, maxBackoffSeconds: 120,
 }, async () => {
   if (!buildDue(Date.now())) return;
-  await build({ asOf: isoDate(Date.now() + 10 * 60 * 1000), manual: false });
+  await build({ asOf: isoDate(Date.now() + 6 * 60 * 1000), manual: false });
 });
 
 // Web view: "Refresh now", at most once a minute.

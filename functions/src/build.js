@@ -1,7 +1,7 @@
 // One build of the week: read both calendars and the weather, merge them into a
 // snapshot, store it, and render the e-ink image. Runs at :25 and :55 from
-// 6:55am to 11:55pm (the 23:55 run is for the day about to start), and on
-// demand from the web page's "Refresh now".
+// 6:55am to 11:25pm and at 12:05am (the first of the new day), and on demand
+// from the web page's "Refresh now".
 //
 // Requirements doc: Architecture; Reliability, privacy and errors.
 //
