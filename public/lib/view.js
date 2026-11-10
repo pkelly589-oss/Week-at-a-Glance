@@ -186,7 +186,9 @@ function todayHtml(day, mode) {
 // "Week of Nov 8 – 14" instead, split the same way.
 function titleHtml(snap) {
   const old = String(snap.title || '').match(/^(Week of)\s+(.*)$/);
-  const [top, range] = old ? [old[1], old[2]] : [snap.subtitle, snap.title];
+  const days = snap.days || [];
+  const weekdays = snap.subtitle || (days.length ? `${days[0].dow} – ${days.at(-1).dow}` : '');
+  const [top, range] = old ? [old[1], old[2]] : [weekdays, snap.title];
   return top ? `<span class="wk-of">${esc(top)}</span><span class="wk-range">${esc(range)}</span>` : esc(range);
 }
 

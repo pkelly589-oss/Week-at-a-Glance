@@ -203,6 +203,8 @@ test('the markup escapes calendar text and marks today and past days', () => {
   assert.ok(html.includes('70%'));
   assert.ok(html.includes('&quot;Home&quot;'), 'locations show, escaped');
   assert.ok(einkDocument(snap).includes('<span class="wk-of">Mon – Sun</span><span class="wk-range">Nov 9 – 15</span>'));
+  // Without the subtitle field, the weekday line comes from the days.
+  assert.ok(weekHtml({ ...snap, subtitle: undefined }).includes('<span class="wk-of">Mon – Sun</span>'));
   // A snapshot built before the change still shows its old title, split.
   assert.ok(weekHtml({ ...snap, title: 'Week of Nov 8 – 14', subtitle: undefined }).includes('<span class="wk-of">Week of</span><span class="wk-range">Nov 8 – 14</span>'));
   assert.equal(esc(`a&'`), 'a&amp;&#39;');
