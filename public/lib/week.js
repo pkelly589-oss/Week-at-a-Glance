@@ -525,23 +525,61 @@ export function parseAirCurrent(json) {
   return v != null && Number.isFinite(+v) ? Math.round(+v) : null;
 }
 
-// AirNow current observations → { aqi, area, at } (or null): the highest AQI
-// of the pollutants reported (ozone, PM2.5, PM10), as AirNow states the
-// overall AQI. `at` is the observation hour (ms). Readings older than
-// `maxAgeMs` count as missing.
-export function parseAirNow(list, now = Date.now(), maxAgeMs = 3 * 36e5) {
-  if (!Array.isArray(list)) return null;
-  let best = null;
-  for (const o of list) {
-    const aqi = Number(o?.AQI);
-    const date = String(o?.DateObserved || '').trim();
-    const hour = Number(o?.HourObserved);
-    if (!Number.isFinite(aqi) || aqi < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(hour)) continue;
-    const at = zonedTime(date, hour);
-    if (now - at > maxAgeMs) continue;
-    if (!best || aqi > best.aqi) best = { aqi: Math.round(aqi), area: o.ReportingArea || null, at };
+// AirNow current observations → { aqi, area, at } (or null).
+//
+// AirNow's current service (aq/observation/current/ziplatlong, since October
+// 2026) returns one row per monitoring site and pollutant: nowcastAQI,
+// parameterName ("OZONE", "PM2.5", "PM10"), dateObserved, hourObserved
+// ("HH:MM"), reportingAreaName, siteName. The retired service's names (AQI,
+// ParameterName, HourObserved as a number, ReportingArea) are read too.
+// Each pollutant's AQI is the median of the nearby sites reporting it (so one
+// odd monitor doesn't set the number), and the overall AQI is the highest
+// pollutant, as AirNow states it. Readings older than `maxAgeMs` are left
+// out. A WebServiceError (e.g. nothing in range) gives null.
+function airNowDate(v) {
+  const s = String(v ?? '').trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : null;
+}
+function airNowHour(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? [v, 0] : null;
+  const m = String(v ?? '').trim().match(/^(\d{1,2})(?::(\d{2}))?/);
+  return m ? [Number(m[1]), Number(m[2] || 0)] : null;
+}
+const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; };
+
+export function parseAirNow(body, now = Date.now(), maxAgeMs = 3 * 36e5) {
+  let rows = body;
+  if (!Array.isArray(rows)) {
+    if (!rows || typeof rows !== 'object' || rows.WebServiceError) return null;
+    rows = Object.values(rows).find(Array.isArray);
+    if (!rows) return null;
   }
-  return best;
+  const byPollutant = new Map();
+  const areas = [];
+  let latest = null;
+  for (const o of rows) {
+    const aqi = Number(o?.nowcastAQI ?? o?.NowcastAQI ?? o?.AQI);
+    const date = airNowDate(o?.dateObserved ?? o?.DateObserved);
+    const hm = airNowHour(o?.hourObserved ?? o?.HourObserved);
+    if (!Number.isFinite(aqi) || aqi < 0 || !date || !hm) continue;
+    const at = zonedTime(date, hm[0]) + hm[1] * 6e4;
+    if (now - at > maxAgeMs) continue;
+    const p = String(o?.parameterName ?? o?.ParameterName ?? '?').toUpperCase().replace(/^OZONE$/, 'O3');
+    if (!byPollutant.has(p)) byPollutant.set(p, []);
+    byPollutant.get(p).push(aqi);
+    const area = o?.reportingAreaName ?? o?.ReportingArea ?? null;
+    if (area) areas.push(area);
+    latest = Math.max(latest ?? at, at);
+  }
+  if (!byPollutant.size) return null;
+  const aqi = Math.round(Math.max(...[...byPollutant.values()].map(median)));
+  // The reporting area most rows name (it can be missing on some rows).
+  const counts = areas.reduce((m, a) => m.set(a, (m.get(a) || 0) + 1), new Map());
+  const area = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return { aqi, area, at: latest };
 }
 
 // NWS /forecast periods (day and night halves) → the same shape.

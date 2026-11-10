@@ -158,6 +158,8 @@ export async function weekAir({ lat, lon }, week, asOf, previous, fetch) {
 }
 
 // AirNow (EPA): the official current AQI from nearby monitors, for the header.
+// Uses the current-observations service that replaced observation/latLong/
+// current when AirNow retired it on October 1, 2026.
 // The AIRNOW secret holds the free API key; empty or "off" skips it, and the
 // header then uses Open-Meteo's modelled AQI. AirNow allows 500 calls an hour;
 // this makes one per build.
@@ -166,11 +168,13 @@ export async function airNowCurrent(apiKey, { lat, lon }, fetch, now = Date.now(
   if (!key || /^(\{\s*\}|off|none)$/i.test(key)) return { current: null, warnings: [] };
   try {
     const q = new URLSearchParams({
-      format: 'application/json', latitude: String(lat), longitude: String(lon), distance: '25', API_KEY: key,
+      format: 'application/json', latitude: String(lat), longitude: String(lon), API_KEY: key,
     });
-    const res = await fetch(`https://www.airnowapi.org/aq/observation/latLong/current/?${q}`, { headers: { 'User-Agent': UA } });
-    if (!res.ok) throw new Error(`AirNow ${res.status}`);
-    const current = parseAirNow(await res.json(), now);
+    const res = await fetch(`https://www.airnowapi.org/aq/observation/current/ziplatlong/?${q}`, { headers: { 'User-Agent': UA } });
+    const body = await res.json().catch(() => null);
+    const said = body?.WebServiceError?.[0]?.Message;
+    if (!res.ok || said) throw new Error(`AirNow ${res.status}${said ? `: ${said}` : ''}`);
+    const current = parseAirNow(body, now);
     if (!current) throw new Error('AirNow: no recent reading');
     return { current, warnings: [] };
   } catch (e) {

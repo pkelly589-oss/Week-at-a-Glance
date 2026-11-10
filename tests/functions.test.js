@@ -61,14 +61,13 @@ function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false,
     calls.push(String(url));
     const u = new URL(url);
     if (u.host === 'www.airnowapi.org') {
-      assert.equal(u.pathname, '/aq/observation/latLong/current/');
+      assert.equal(u.pathname, '/aq/observation/current/ziplatlong/');
       assert.equal(u.searchParams.get('API_KEY'), 'an-key');
-      if (airNowDown) return json({ message: 'down' }, 503);
-      const hour = airNowOld ? 18 : 23;
-      return json([
-        { DateObserved: '2026-11-09 ', HourObserved: hour, LocalTimeZone: 'PST', ReportingArea: 'Oakland', ParameterName: 'O3', AQI: 21, Category: { Number: 1, Name: 'Good' } },
-        { DateObserved: '2026-11-09 ', HourObserved: hour, LocalTimeZone: 'PST', ReportingArea: 'Oakland', ParameterName: 'PM2.5', AQI: 58, Category: { Number: 2, Name: 'Moderate' } },
-      ]);
+      if (airNowDown) return json({ WebServiceError: [{ Message: 'No observations in range' }] });
+      const hourObserved = airNowOld ? '18:00' : '23:00';
+      const row = (siteName, parameterName, nowcastAQI) => ({ dateObserved: '2026-11-09', hourObserved, localTimeZone: 'PST',
+        reportingAreaName: 'Oakland', siteName, parameterName, nowcastAQI, aqiCategoryName: 'Moderate' });
+      return json([row('Oakland West', 'OZONE', 21), row('Oakland West', 'PM2.5', 58), row('Laney College', 'PM2.5', 54)]);
     }
     if (u.host === 'api.enphaseenergy.com') {
       if (u.pathname === '/oauth/token') {
@@ -320,7 +319,7 @@ test('air quality down: earlier values are kept, with a warning only if today ha
 test('the header gets the conditions at build time: temperature and sky (Open-Meteo), AQI (AirNow)', async () => {
   const week = await build();
   assert.deepEqual(week.current, { temp: 53, icon: 'moon', label: 'Clear', at: '2026-11-09T23:45',
-    aqi: 58, aqi_source: 'airnow', aqi_area: 'Oakland' }); // the worst pollutant, PM2.5
+    aqi: 56, aqi_source: 'airnow', aqi_area: 'Oakland' }); // the worst pollutant, PM2.5: median of 58 and 54
   // AirNow down, or its reading over 3 hours old: Open-Meteo's modelled AQI, no warning.
   for (const opts of [{ airNowDown: true }, { airNowOld: true }]) {
     const snap = await build({ fetch: fakeFetch(opts) });
@@ -334,7 +333,7 @@ test('the header gets the conditions at build time: temperature and sky (Open-Me
   assert.equal(off.calls.filter((c) => c.includes('airnowapi')).length, 0);
   // No sky either: just the AQI, and the header shows today's forecast.
   const noSky = await build({ fetch: fakeFetch({ openMeteoDown: true }), now: NOW + 36e5 });
-  assert.deepEqual(noSky.current, { aqi: 58, aqi_source: 'airnow', aqi_area: 'Oakland' });
+  assert.deepEqual(noSky.current, { aqi: 56, aqi_source: 'airnow', aqi_area: 'Oakland' });
 });
 
 // ---- home energy (Enphase) -------------------------------------------------

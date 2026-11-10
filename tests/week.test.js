@@ -530,13 +530,19 @@ test('the header shows conditions now, else today\'s forecast', () => {
 
 test('AirNow: the highest pollutant AQI, recent readings only', () => {
   const now = Date.parse('2026-11-10T08:10:00-08:00');
-  const obs = (ParameterName, AQI, HourObserved = 7, DateObserved = '2026-11-10 ') =>
-    ({ DateObserved, HourObserved, LocalTimeZone: 'PST', ReportingArea: 'Oakland', ParameterName, AQI });
-  assert.deepEqual(parseAirNow([obs('O3', 30), obs('PM2.5', 71), obs('PM10', 18)], now),
-    { aqi: 71, area: 'Oakland', at: Date.parse('2026-11-10T07:00:00-08:00') });
-  assert.equal(parseAirNow([obs('PM2.5', 71, 4)], now), null); // over 3 hours old
-  assert.equal(parseAirNow([obs('PM2.5', -1)], now), null);    // no value
-  assert.equal(parseAirNow([obs('O3', 40, 23, '2026-11-09')], now), null);
-  assert.equal(parseAirNow({ error: 'bad key' }, now), null);
+  const seven = Date.parse('2026-11-10T07:00:00-08:00');
+  // The current service: one row per site and pollutant.
+  const row = (siteName, parameterName, nowcastAQI, hourObserved = '07:00', dateObserved = '2026-11-10', reportingAreaName = 'Oakland') =>
+    ({ dateObserved, hourObserved, localTimeZone: 'PST', reportingAreaName, siteName, parameterName, nowcastAQI, aqiCategoryName: 'x' });
+  assert.deepEqual(parseAirNow([row('A', 'OZONE', 30), row('A', 'PM2.5', 71), row('B', 'PM2.5', 65), row('C', 'PM2.5', 140, '07:00', '2026-11-10', null)], now),
+    { aqi: 71, area: 'Oakland', at: seven }); // PM2.5: median of 65, 71, 140; a missing area name is fine
+  assert.equal(parseAirNow([row('A', 'PM2.5', 71, '04:00')], now), null);   // over 3 hours old
+  assert.equal(parseAirNow([row('A', 'PM2.5', -999)], now), null);           // unavailable
+  assert.equal(parseAirNow([row('A', 'OZONE', 40, '23:00', '11/09/2026')], now), null);
+  assert.equal(parseAirNow([row('A', 'OZONE', 40, '07:00', '11/10/2026')], now).aqi, 40);
+  assert.equal(parseAirNow({ WebServiceError: [{ Message: 'nothing in range' }] }, now), null);
   assert.equal(parseAirNow([], now), null);
+  // The retired service's field names still read.
+  assert.deepEqual(parseAirNow([{ DateObserved: '2026-11-10 ', HourObserved: 7, ReportingArea: 'Oakland', ParameterName: 'O3', AQI: 30 }], now),
+    { aqi: 30, area: 'Oakland', at: seven });
 });

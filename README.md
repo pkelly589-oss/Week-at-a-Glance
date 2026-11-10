@@ -88,8 +88,10 @@ Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
   until 7am. If that refresh's picture isn't ready, it checks back every 15
   minutes (never past the next refresh) for up to 6 hours.
 - **Air quality:** the header's AQI is AirNow's (EPA) current reading from
-  monitors within 25 miles: the highest of ozone, PM2.5 and PM10, as AirNow
-  reports it. If AirNow fails, its key is off, or its reading is over 3 hours
+  nearby monitors (its current-observations service, which replaced the one
+  AirNow retired on October 1, 2026): for each of ozone, PM2.5 and PM10 the
+  median of the nearby sites, and the highest of those, as AirNow reports
+  the overall AQI. If AirNow fails, its key is off, or its reading is over 3 hours
   old, Open-Meteo's air-quality forecast (CAMS) stands in, with no warning.
 - **Weather:** Open-Meteo (mainly NOAA's models for the US) for each day's
   forecast and the current temperature and sky; the National Weather Service
