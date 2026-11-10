@@ -1,6 +1,6 @@
 // A believable week of Google Calendar data for tests, local development and
 // screenshots. Invented people and events only (no household data).
-import { windowOf, buildEvents, buildSnapshot } from '../public/lib/week.js';
+import { windowOf, buildEvents, buildSnapshot, energySummary } from '../public/lib/week.js';
 
 export const PETE = 'pete@example.com';
 export const DAVID = 'david@example.com';
@@ -110,11 +110,30 @@ export const WEATHER = {
 
 export const AIR = { '2026-11-08': 32, '2026-11-09': 48, '2026-11-10': 64, '2026-11-11': 41, '2026-11-12': 118, '2026-11-13': 87 };
 
-export function sampleSnapshot({ asOf = '2026-11-10', builtAt = Date.parse('2026-11-09T23:55:00-08:00'), warnings = [] } = {}) {
+// Enphase lifetime answers (Wh per day from start_date), as the API sends them.
+export const ENPHASE = {
+  energy_lifetime: { system_id: 42, start_date: '2026-11-08', production: [17600, 18420] },
+  consumption_lifetime: { system_id: 42, start_date: '2026-11-08', consumption: [20100, 21730] },
+  energy_import_lifetime: { system_id: 42, start_date: '2026-11-08', import: [2900, 3110] },
+  energy_export_lifetime: { system_id: 42, start_date: '2026-11-08', export: [5800, 6240] },
+  battery_lifetime: { system_id: 42, start_date: '2026-11-08', charge: [7700, 7930], discharge: [7300, 7420] },
+  'telemetry/battery': { system_id: 42, last_reported_aggregate_soc: '64%', intervals: [] },
+};
+const daily = (body, key) => Object.fromEntries(body[key].map((v, i) => [`2026-11-${String(8 + i).padStart(2, '0')}`, v]));
+export const sampleEnergy = (asOf = '2026-11-10') => energySummary({
+  produced: daily(ENPHASE.energy_lifetime, 'production'),
+  consumed: daily(ENPHASE.consumption_lifetime, 'consumption'),
+  imported: daily(ENPHASE.energy_import_lifetime, 'import'),
+  exported: daily(ENPHASE.energy_export_lifetime, 'export'),
+  charged: daily(ENPHASE.battery_lifetime, 'charge'),
+  discharged: daily(ENPHASE.battery_lifetime, 'discharge'),
+}, '2026-11-09', { asOf, soc: 64 });
+
+export function sampleSnapshot({ asOf = '2026-11-10', builtAt = Date.parse('2026-11-09T23:55:00-08:00'), warnings = [], energy = sampleEnergy(asOf) } = {}) {
   const week = windowOf(asOf);
   const { hide_locations: hideLocations, reminders, hide_events: hideEvents } = HOUSEHOLD;
   return buildSnapshot({
-    asOf, builtAt, week, warnings, weather: WEATHER, air: AIR, reminders, location: HOUSEHOLD.location,
+    asOf, builtAt, week, warnings, weather: WEATHER, air: AIR, reminders, location: HOUSEHOLD.location, energy,
     events: buildEvents(calendarSources(), HOUSEHOLD.people, { hideLocations, reminders, hideEvents }),
   });
 }

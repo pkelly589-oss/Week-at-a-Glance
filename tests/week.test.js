@@ -5,8 +5,10 @@ import {
   isoDate, startOfDay, windowOf, rangeTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
+  parseEnphaseDaily, parseSoc, energySummary,
 } from '../public/lib/week.js';
-import { weekHtml, einkDocument, esc, plainText } from '../public/lib/view.js';
+import { weekHtml, einkDocument, esc, plainText, energyHtml } from '../public/lib/view.js';
+import { sampleEnergy, sampleSnapshot } from './fixtures.js';
 
 const PETE = 'pete@example.com', DAVID = 'david@example.com';
 const PEOPLE = [
@@ -453,4 +455,63 @@ test('birthdays get their own look; plans around birthdays stay events', () => {
   const thuHtml = html.slice(html.indexOf('data-date="2026-11-12"'), html.indexOf('data-date="2026-11-13"'));
   assert.match(thuHtml, /<li class="birthday"><svg class="cake"[^]*?<span>Lisa’s Birthday<\/span>/);
   assert.ok(thuHtml.indexOf('Some Holiday') < thuHtml.indexOf('Lisa’s Birthday') && thuHtml.indexOf('Lisa’s Birthday') < thuHtml.indexOf('Fertilize'));
+});
+
+test('home energy: Enphase daily totals become yesterday\'s strip', () => {
+  const body = { start_date: '2026-11-08', production: [17600, 18420], consumption: [20100, 21730] };
+  assert.deepEqual(parseEnphaseDaily(body, 'production'), { '2026-11-08': 17600, '2026-11-09': 18420 });
+  assert.deepEqual(parseEnphaseDaily({ start_date: 'bad', production: [1] }, 'production'), {});
+  assert.deepEqual(parseEnphaseDaily(body, 'import'), {});
+  assert.equal(parseSoc('64%'), 64);
+  assert.equal(parseSoc(80.6), 81);
+  assert.equal(parseSoc('n/a'), null);
+  assert.equal(parseSoc(140), null);
+
+  const e = sampleEnergy('2026-11-10');
+  assert.equal(e.date, '2026-11-09');
+  assert.equal(e.label, 'Yesterday');
+  assert.equal(e.solar_kwh, 18.4);
+  // Home use from the balance, as the Enphase app shows it:
+  // 18.42 + 3.11 + 7.42 - 6.24 - 7.93 = 14.78
+  assert.equal(e.used_kwh, 14.8);
+  assert.equal(e.metered_kwh, 21.7);
+  assert.equal(e.imported_kwh, 3.1);
+  assert.equal(e.exported_kwh, 6.2);
+  assert.equal(e.charged_kwh, 7.9);
+  assert.equal(e.self_powered, 79); // 1 - 3.11 / 14.78
+
+  // The app's Nov 9 figures: 13.6 + 0.9 + 7.3 - 0.1 - 9.0 = 12.7 ≈ its 12.6 Consumed,
+  // even though Enphase's consumption figure said 13.4.
+  const nov9 = energySummary({
+    produced: { '2026-11-09': 13600 }, imported: { '2026-11-09': 900 }, exported: { '2026-11-09': 140 },
+    charged: { '2026-11-09': 9000 }, discharged: { '2026-11-09': 7300 }, consumed: { '2026-11-09': 13400 },
+  }, '2026-11-09');
+  assert.equal(nov9.used_kwh, 12.7);
+  assert.equal(nov9.self_powered, 93);
+  // No battery figures: Enphase's consumption figure is used.
+  assert.equal(energySummary({ produced: { '2026-11-09': 13600 }, consumed: { '2026-11-09': 13400 } }, '2026-11-09').used_kwh, 13.4);
+  assert.equal(e.battery_pct, 64);
+
+  // Yesterday not reported yet: the day before, named.
+  const late = energySummary({ produced: { '2026-11-08': 17600 } }, '2026-11-09', { asOf: '2026-11-10' });
+  assert.equal(late.label, 'Sun Nov 8');
+  assert.equal(late.self_powered, null);
+  // Only a battery reading.
+  assert.deepEqual(energySummary({}, '2026-11-09', { soc: 50 }), { date: null, battery_pct: 50 });
+  assert.equal(energySummary({}, '2026-11-09'), null);
+
+  const html = energyHtml(e);
+  assert.match(html, /Yesterday’s energy/);
+  assert.match(html, /Solar<\/span> <b>18\.4 kWh/);
+  assert.match(html, /Grid<\/span> <b>3\.1 in/);
+  assert.match(html, /Self-powered<\/span> <b>79%/);
+  assert.match(html, /Battery<\/span> <b>64%/);
+  assert.match(energyHtml({ ...e, stale: true }), /class="energy stale"/);
+  assert.equal(energyHtml(null), '');
+  // Where it goes: under the header on the web, along the bottom on the door.
+  const snap = sampleSnapshot();
+  const web = weekHtml(snap, { mode: 'web' }), eink = weekHtml(snap, { mode: 'eink' });
+  assert.ok(web.indexOf('class="energy') < web.indexOf('class="week"'));
+  assert.ok(eink.indexOf('class="energy') > eink.indexOf('class="week"'));
+  assert.ok(!weekHtml(sampleSnapshot({ energy: null }), { mode: 'eink' }).includes('class="energy'));
 });

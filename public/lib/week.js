@@ -528,9 +528,10 @@ export function parseNws(json) {
 // The snapshot both outputs draw from
 // ---------------------------------------------------------------------------
 
-export function buildSnapshot({ asOf, builtAt, week, events, weather, air = {}, reminders = [], location = null, warnings = [] }) {
+export function buildSnapshot({ asOf, builtAt, week, events, weather, air = {}, reminders = [], location = null, warnings = [], energy = null }) {
   const days = layoutWeek(events, week);
   return {
+    energy,                      // yesterday's solar, battery and grid totals (or null)
     week_id: week.id,
     title: rangeTitle(week.start, week.end),          // "Nov 9 – 15"
     subtitle: `${dayShort(week.start)} – ${dayShort(week.end)}`, // "Mon – Sun"
@@ -640,3 +641,65 @@ export function titleMatches(title, phrases) {
 // Calendar events a reminder replaces.
 export const hiddenByReminder = (title, rules) =>
   titleMatches(title, (rules || []).flatMap((r) => r.hide_events || []));
+
+// ---------------------------------------------------------------------------
+// Home energy: solar, battery and grid (Enphase Enlighten)
+// ---------------------------------------------------------------------------
+
+// Enphase's *_lifetime endpoints answer with a start date and one value per day
+// in Wh, e.g. { start_date: '2026-11-07', production: [21000, 19500] }.
+// Returns { 'YYYY-MM-DD': Wh } for one of those arrays.
+export function parseEnphaseDaily(json, key) {
+  const list = json?.[key];
+  const start = json?.start_date;
+  if (!Array.isArray(list) || !/^\d{4}-\d{2}-\d{2}$/.test(start || '')) return {};
+  const out = {};
+  list.forEach((wh, i) => { if (wh != null && Number.isFinite(+wh)) out[addDays(start, i)] = +wh; });
+  return out;
+}
+
+// The battery's state of charge as a whole percent ("81%", 81 or "81" all work).
+export function parseSoc(v) {
+  const n = parseFloat(String(v ?? '').replace('%', ''));
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n) : null;
+}
+
+const kwh = (wh) => (wh == null ? null : Math.round(wh / 100) / 10);
+
+// One day's totals for the header strip, in kWh to one decimal.
+// series: { produced, consumed, imported, exported, charged, discharged }, each
+// { date: Wh } (any may be missing: a system without a battery or consumption
+// meter simply has fewer numbers). Picks the latest date on or before `day`
+// that has solar production. `self_powered` is the share of the home's use
+// that didn't come from the grid.
+//
+// Home use follows the Enphase app's "Consumed": everything that came in
+// (solar, grid, battery) minus everything that went out (grid, battery).
+// Enphase's own consumption figure can run higher than the app's, so it is
+// only used when a battery or grid figure is missing.
+export function energySummary(series, day, { soc = null, asOf = null } = {}) {
+  const dates = Object.keys(series.produced || {}).filter((d) => d <= day).sort();
+  const date = dates.at(-1);
+  if (!date) return soc == null ? null : { date: null, battery_pct: soc };
+  const at = (k) => series[k]?.[date] ?? null;
+  const flows = ['produced', 'imported', 'exported', 'charged', 'discharged'].map(at);
+  const imported = at('imported');
+  const used = flows.every((v) => v != null)
+    ? Math.max(0, flows[0] + flows[1] + flows[4] - flows[2] - flows[3])
+    : at('consumed');
+  const selfPowered = used > 0 && imported != null
+    ? Math.max(0, Math.min(100, Math.round(100 * (1 - imported / used)))) : null;
+  return {
+    date,
+    label: asOf && date === addDays(asOf, -1) ? 'Yesterday' : `${dayShort(date)} ${monthDay(date)}`,
+    solar_kwh: kwh(at('produced')),
+    used_kwh: kwh(used),
+    imported_kwh: kwh(imported),
+    exported_kwh: kwh(at('exported')),
+    charged_kwh: kwh(at('charged')),
+    discharged_kwh: kwh(at('discharged')),
+    self_powered: selfPowered,
+    battery_pct: soc,
+    metered_kwh: kwh(at('consumed')), // Enphase's own consumption figure, for comparison
+  };
+}

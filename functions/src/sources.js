@@ -3,7 +3,8 @@
 //
 // Requirements doc: Data sources.
 
-import { TZ, parseOpenMeteo, parseNws, parseAirQuality } from '../shared/week.js';
+import { createHash } from 'node:crypto';
+import { TZ, parseOpenMeteo, parseNws, parseAirQuality, parseEnphaseDaily, parseSoc, energySummary, addDays, dayShort, monthDay } from '../shared/week.js';
 
 // ---------------------------------------------------------------------------
 // Google Calendar
@@ -149,4 +150,125 @@ export async function weekAir({ lat, lon }, week, asOf, previous, fetch) {
     if (v != null) out[date] = v;
   }
   return { air: out, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Home energy: Enphase Enlighten API v4
+// ---------------------------------------------------------------------------
+//
+// The ENPHASE secret (set by `npm run connect-enphase`) holds the app's API key,
+// client ID and secret, the system ID and the first refresh token. Enphase
+// access tokens last a day and refresh tokens a month, and each refresh may
+// hand back a new refresh token, so the latest pair is kept in Firestore at
+// private/enphase (functions only; the rules deny every browser). `seed`
+// records which connect it came from, so reconnecting starts a fresh chain.
+//
+// Free "Watt" plan: 10 calls a minute, 1,000 a month. A build makes 6 calls,
+// and a result less than 20 minutes old is reused, so two builds a day plus
+// any "Refresh now" taps stay far under the limit.
+
+export class EnphaseAuthError extends Error {}
+
+const ENPHASE = 'https://api.enphaseenergy.com';
+const CACHE_MS = 20 * 60 * 1000;
+const fingerprint = (s) => createHash('sha256').update(String(s)).digest('hex').slice(0, 16);
+
+// Reads the ENPHASE secret. Empty, "{}" or "off" means energy is switched off.
+export function enphaseConfig(raw) {
+  if (!raw || /^\s*(\{\s*\}|off|none)?\s*$/i.test(raw)) return null;
+  let c;
+  try { c = JSON.parse(raw); } catch { throw new EnphaseAuthError('The ENPHASE secret isn\'t valid JSON. Run `npm run connect-enphase` again.'); }
+  const missing = ['api_key', 'client_id', 'client_secret', 'refresh_token', 'system_id'].filter((k) => !c[k]);
+  if (missing.length) throw new EnphaseAuthError(`The ENPHASE secret is missing ${missing.join(', ')}. Run \`npm run connect-enphase\` again.`);
+  return c;
+}
+
+export async function enphaseAccessToken(cfg, db, fetch, now = Date.now()) {
+  const ref = db.doc('private/enphase');
+  const stored = (await ref.get()).data() || {};
+  const seed = fingerprint(cfg.refresh_token);
+  const mine = stored.seed === seed;
+  if (mine && stored.access_token && stored.access_expires_at > now + 10 * 60 * 1000) return stored.access_token;
+
+  const refreshToken = mine && stored.refresh_token ? stored.refresh_token : cfg.refresh_token;
+  const q = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken });
+  const res = await fetch(`${ENPHASE}/oauth/token?${q}`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${Buffer.from(`${cfg.client_id}:${cfg.client_secret}`).toString('base64')}` },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.access_token) {
+    throw new EnphaseAuthError(res.status === 400 || res.status === 401 || body.error === 'invalid_grant'
+      ? 'Enphase access expired. Run `npm run connect-enphase` again.'
+      : `Enphase sign-in failed (${body.error || res.status}).`);
+  }
+  await ref.set({
+    seed,
+    refresh_token: body.refresh_token || refreshToken,
+    access_token: body.access_token,
+    access_expires_at: now + (Number(body.expires_in) || 86400) * 1000,
+    refreshed_at: now,
+  }, { merge: true });
+  return body.access_token;
+}
+
+async function enphaseGet(cfg, token, path, params, fetch) {
+  const q = new URLSearchParams({ ...params, key: cfg.api_key });
+  const res = await fetch(`${ENPHASE}/api/v4/systems/${encodeURIComponent(cfg.system_id)}/${path}?${q}`, {
+    headers: { Authorization: `Bearer ${token}`, key: cfg.api_key },
+  });
+  if (!res.ok) throw new Error(`Enphase ${path} ${res.status}`);
+  return res.json();
+}
+
+// Yesterday's totals (relative to asOf) and the battery's charge right now.
+// Each figure is fetched on its own, so a system without a battery or a
+// consumption meter still shows what it has. On failure it falls back to the
+// previous snapshot's figures for the same day, then to nothing.
+export async function homeEnergy(cfg, db, asOf, previous, fetch, now = Date.now()) {
+  if (!cfg) return { energy: null, warnings: [] };
+  const day = addDays(asOf, -1);
+  const cacheRef = db.doc('private/enphase_cache');
+  const cached = (await cacheRef.get()).data();
+  if (cached?.as_of === asOf && cached.system_id === String(cfg.system_id) && now - cached.fetched_at < CACHE_MS) {
+    return { energy: cached.energy, warnings: [] };
+  }
+  try {
+    const token = await enphaseAccessToken(cfg, db, fetch, now);
+    const range = { start_date: addDays(day, -1), end_date: day };
+    const asks = [
+      ['produced', 'energy_lifetime', 'production'],
+      ['consumed', 'consumption_lifetime', 'consumption'],
+      ['imported', 'energy_import_lifetime', 'import'],
+      ['exported', 'energy_export_lifetime', 'export'],
+      ['battery', 'battery_lifetime', null],
+    ];
+    const [soc, ...got] = await Promise.allSettled([
+      enphaseGet(cfg, token, 'telemetry/battery', {}, fetch),
+      ...asks.map(([, path]) => enphaseGet(cfg, token, path, range, fetch)),
+    ]);
+    const series = {};
+    got.forEach((r, i) => {
+      const [name, path, key] = asks[i];
+      if (r.status !== 'fulfilled') { console.warn(`Enphase ${path} failed`, r.reason?.message); return; }
+      if (key) series[name] = parseEnphaseDaily(r.value, key);
+      else { series.charged = parseEnphaseDaily(r.value, 'charge'); series.discharged = parseEnphaseDaily(r.value, 'discharge'); }
+    });
+    if (soc.status !== 'fulfilled') console.warn('Enphase battery telemetry failed', soc.reason?.message);
+    console.log('Enphase daily Wh', JSON.stringify(series));
+    const energy = energySummary(series, day, {
+      asOf, soc: soc.status === 'fulfilled' ? parseSoc(soc.value?.last_reported_aggregate_soc) : null,
+    });
+    if (!energy) throw new Error('Enphase returned no data');
+    await cacheRef.set({ as_of: asOf, system_id: String(cfg.system_id), fetched_at: now, energy });
+    return { energy, warnings: [] };
+  } catch (e) {
+    console.warn('Home energy failed', e.message);
+    const why = e instanceof EnphaseAuthError ? e.message : 'Solar data unavailable';
+    if (previous?.date) {
+      const label = previous.date === day ? 'Yesterday' : `${dayShort(previous.date)} ${monthDay(previous.date)}`;
+      return { energy: { ...previous, label, battery_pct: null, stale: true }, warnings: [why] };
+    }
+    return { energy: null, warnings: [why] };
+  }
 }

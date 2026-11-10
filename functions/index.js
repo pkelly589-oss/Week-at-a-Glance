@@ -32,11 +32,15 @@ const bucket = () => getStorage().bucket();
 const GOOGLE_CLIENT_ID = defineSecret('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_CLIENT_SECRET');
 const GOOGLE_REFRESH_TOKEN = defineSecret('GOOGLE_REFRESH_TOKEN');
-const SECRETS = [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN];
+// Enphase (solar and battery): one JSON secret from `npm run connect-enphase`,
+// or "{}" to leave energy off.
+const ENPHASE = defineSecret('ENPHASE');
+const SECRETS = [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, ENPHASE];
 const secretValues = () => ({
   clientId: GOOGLE_CLIENT_ID.value(),
   clientSecret: GOOGLE_CLIENT_SECRET.value(),
   refreshToken: GOOGLE_REFRESH_TOKEN.value(),
+  enphase: ENPHASE.value(),
 });
 
 // Rendering runs headless Chrome, which needs the extra memory.

@@ -4,7 +4,7 @@
 import { test, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { calendarSources, HOUSEHOLD, PETE, DAVID } from './fixtures.js';
+import { calendarSources, HOUSEHOLD, PETE, DAVID, ENPHASE } from './fixtures.js';
 
 const req = createRequire(new URL('../functions/package.json', import.meta.url));
 const { initializeApp } = req('firebase-admin/app');
@@ -53,12 +53,24 @@ const NWS_FORECAST = { properties: { periods: [
 ] } };
 
 // A fake network. Options turn individual services off.
-function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false, airDown = false } = {}) {
+function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false, airDown = false, enphaseDown = false, enphaseExpired = false } = {}) {
   const cals = Object.fromEntries(calendarSources().map((c) => [c.id, c.events]));
   const calls = [];
-  const fn = async (url) => {
+  const fn = async (url, init = {}) => {
     calls.push(String(url));
     const u = new URL(url);
+    if (u.host === 'api.enphaseenergy.com') {
+      if (u.pathname === '/oauth/token') {
+        fn.enphaseRefreshes.push(u.searchParams.get('refresh_token'));
+        assert.match(init.headers?.Authorization || '', /^Basic /);
+        return enphaseExpired ? json({ error: 'invalid_grant' }, 401)
+          : json({ access_token: `en-access-${fn.enphaseRefreshes.length}`, refresh_token: `en-refresh-${fn.enphaseRefreshes.length}`, expires_in: 86393 });
+      }
+      if (enphaseDown) return json({ message: 'down' }, 503);
+      assert.equal(u.searchParams.get('key'), 'en-key');
+      const path = u.pathname.replace('/api/v4/systems/42/', '');
+      return ENPHASE[path] ? json(ENPHASE[path]) : json({ message: 'not found' }, 404);
+    }
     if (u.host === 'oauth2.googleapis.com') return badToken ? json({ error: 'invalid_grant' }, 400) : json({ access_token: 'tok' });
     if (u.host === 'www.googleapis.com') {
       const id = decodeURIComponent(u.pathname.split('/')[4]);
@@ -72,15 +84,18 @@ function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false,
     throw new Error(`unexpected ${url}`);
   };
   fn.calls = calls;
+  fn.enphaseRefreshes = [];
+  fn.enphaseCalls = () => calls.filter((c) => c.includes('enphaseenergy') && !c.includes('/oauth/'));
   return fn;
 }
 
-const SECRETS = { clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh' };
+const ENPHASE_SECRET = JSON.stringify({ api_key: 'en-key', client_id: 'en-id', client_secret: 'en-secret', refresh_token: 'en-first', system_id: 42 });
+const SECRETS = { clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh', enphase: ENPHASE_SECRET };
 const NOW = Date.parse('2026-11-09T23:55:00-08:00');
 const render = async () => Buffer.from('PNG');
 
 async function clear() {
-  for (const c of ['config', 'weeks', 'status', 'renders', 'devices']) {
+  for (const c of ['config', 'weeks', 'status', 'renders', 'devices', 'private']) {
     const s = await db.collection(c).get();
     await Promise.all(s.docs.map((d) => d.ref.delete()));
   }
@@ -93,7 +108,7 @@ beforeEach(async () => {
 });
 
 const build = (opts = {}) => runBuild({
-  db, bucket: opts.bucket || fakeBucket(), fetch: opts.fetch || fakeFetch(), secrets: SECRETS,
+  db, bucket: opts.bucket || fakeBucket(), fetch: opts.fetch || fakeFetch(), secrets: opts.secrets || SECRETS,
   now: opts.now || NOW, asOf: opts.asOf || '2026-11-10', render,
 });
 
@@ -146,7 +161,7 @@ test('a build stores the merged week, the image and a good status', async () => 
 
 test('a shared calendar failing is named by its label', async () => {
   const fetch = fakeFetch();
-  const wrapped = async (url) => (String(url).includes('home-tasks') ? json({}, 403) : fetch(url));
+  const wrapped = async (url, init) => (String(url).includes('home-tasks') ? json({}, 403) : fetch(url, init));
   const snap = await build({ fetch: wrapped });
   assert.deepEqual(snap.warnings, ["Couldn't read Home Tasks"]);
 });
@@ -286,4 +301,57 @@ test('air quality down: earlier values are kept, with a warning only if today ha
   await db.doc('weeks/2026-11-09').delete();
   const fresh = await build({ fetch: fakeFetch({ airDown: true }) });
   assert.deepEqual(fresh.warnings, ['Air quality unavailable']);
+});
+
+// ---- home energy (Enphase) -------------------------------------------------
+
+test('energy: yesterday\'s Enphase totals land in the snapshot, tokens rotate, results are reused', async () => {
+  const fetch = fakeFetch();
+  const week = await build({ fetch });
+  assert.equal(week.energy.date, '2026-11-09');
+  assert.equal(week.energy.solar_kwh, 18.4);
+  assert.equal(week.energy.self_powered, 79);
+  assert.equal(week.energy.battery_pct, 64);
+  assert.deepEqual(week.warnings, []);
+  assert.deepEqual(fetch.enphaseRefreshes, ['en-first']);
+  assert.equal(fetch.enphaseCalls().length, 6);
+  const tokens = (await db.doc('private/enphase').get()).data();
+  assert.equal(tokens.refresh_token, 'en-refresh-1');
+  assert.equal(tokens.access_token, 'en-access-1');
+
+  // A "Refresh now" ten minutes later reuses the figures: no Enphase calls.
+  const again = fakeFetch();
+  assert.equal((await build({ fetch: again, now: NOW + 10 * 6e4 })).energy.solar_kwh, 18.4);
+  assert.equal(again.enphaseCalls().length, 0);
+
+  // Two days on: the access token has expired, so the stored (rotated)
+  // refresh token is used, not the one from the original connect.
+  const later = fakeFetch();
+  later.enphaseRefreshes.length = 0;
+  await build({ fetch: later, now: NOW + 2 * 864e5, asOf: '2026-11-12' });
+  assert.deepEqual(later.enphaseRefreshes, ['en-refresh-1']);
+});
+
+test('energy: an outage keeps the earlier figures, marked, and the build still succeeds', async () => {
+  await build({ fetch: fakeFetch() });
+  await db.doc('private/enphase_cache').delete();
+  const snap = await build({ fetch: fakeFetch({ enphaseDown: true }), now: NOW + 36e5 });
+  assert.equal(snap.energy.solar_kwh, 18.4);
+  assert.equal(snap.energy.stale, true);
+  assert.equal(snap.energy.battery_pct, null); // a battery level from earlier would mislead
+  assert.deepEqual(snap.warnings, ['Solar data unavailable']);
+  assert.equal((await db.doc('status/latest').get()).data().ok, true);
+});
+
+test('energy: expired Enphase access asks for a reconnect; no secret means no strip', async () => {
+  const expired = await build({ fetch: fakeFetch({ enphaseExpired: true }) });
+  assert.equal(expired.energy, null);
+  assert.match(expired.warnings.join(), /npm run connect-enphase/);
+
+  await clear(); await db.doc('config/household').set(HOUSEHOLD);
+  const fetch = fakeFetch();
+  const off = await build({ fetch, secrets: { ...SECRETS, enphase: '{}' } });
+  assert.equal(off.energy, null);
+  assert.deepEqual(off.warnings, []);
+  assert.equal(fetch.calls.filter((c) => c.includes('enphase')).length, 0);
 });

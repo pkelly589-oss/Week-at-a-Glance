@@ -11,11 +11,13 @@
 //   status/device      the TRMNL's last check-in           — members can read
 //   renders/{name}     where each PNG is stored + its URL token (functions only)
 //   devices/{mac}      the TRMNL's API key                 (functions only)
+//   private/enphase    Enphase's current tokens             (functions only)
+//   private/enphase_cache  the last energy figures, reused for 20 minutes
 
 import { randomBytes } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { windowOf, buildEvents, buildSnapshot, addDays, isHolidayCalendar, isReminderCalendar } from '../shared/week.js';
-import { googleAccessToken, listEvents, weekWeather, weekAir, GoogleAuthError } from './sources.js';
+import { googleAccessToken, listEvents, weekWeather, weekAir, homeEnergy, enphaseConfig, GoogleAuthError } from './sources.js';
 
 export const KEEP_DAYS = 14;
 
@@ -87,16 +89,23 @@ export async function runBuild({ db, bucket, fetch, secrets, now = Date.now(), a
   const previousAir = Object.fromEntries(previousDays
     .filter((d) => d.aqi != null).map((d) => [d.date, d.aqi]));
 
+  const previousEnergy = earlier.map((snap) => snap?.energy).filter(Boolean)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null;
+
   const cal = await readCalendars(household, week, secrets, fetch);
-  const [wx, aq] = await Promise.all([
+  let enphase = null, energyWarnings = [];
+  try { enphase = enphaseConfig(secrets.enphase); } catch (e) { energyWarnings = [e.message]; }
+  const [wx, aq, en] = await Promise.all([
     weekWeather(household.location, week, asOf, previousWeather, fetch),
     weekAir(household.location, week, asOf, previousAir, fetch),
+    homeEnergy(enphase, db, asOf, previousEnergy, fetch, now),
   ]);
   const snapshot = buildSnapshot({
     asOf, builtAt: now, week, events: cal.events, weather: wx.weather, air: aq.air,
     reminders: household.reminders || [],
     location: household.location,
-    warnings: [...cal.warnings, ...wx.warnings, ...aq.warnings],
+    energy: en.energy,
+    warnings: [...cal.warnings, ...wx.warnings, ...aq.warnings, ...energyWarnings, ...en.warnings],
   });
   await weekRef.set(snapshot);
 

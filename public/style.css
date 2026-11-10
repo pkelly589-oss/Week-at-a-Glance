@@ -123,6 +123,21 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--pete); ou
 .wk-of { font-weight: 400; }
 @media (min-width: 900px) { .week-head h1 { font-size: 3rem; } }
 
+/* ---- Home energy strip ------------------------------------------------- */
+.energy { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; margin: 0 0 12px;
+  padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.en-head { flex-basis: 100%; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-soft); }
+.en-item { display: flex; align-items: center; gap: 6px; }
+.en-ic svg { width: 24px; height: 24px; display: block; }
+.en-label { color: var(--ink-soft); }
+.en-sep { color: var(--ink-soft); }
+.energy.stale .en-head::after { content: " (earlier figures)"; font-weight: 400; text-transform: none; }
+@media (min-width: 900px) {
+  .en-head { flex-basis: auto; }
+  .en-batt { margin-left: auto; }
+}
+
 /* ---- Days: stacked on phones ------------------------------------------- */
 .week { display: flex; flex-direction: column; gap: 12px; }
 .day { background: var(--surface); border-radius: var(--radius); padding: 0 14px 12px; scroll-margin-top: 12px;

@@ -181,6 +181,38 @@ function todayHtml(day, mode) {
   return `<div class="today-wx">${main}${sunset}</div>`;
 }
 
+// Home energy: yesterday's solar, home use, grid and self-powered share, plus
+// the battery's charge at build time. A strip along the bottom of the e-ink
+// image and under the header on the web.
+const EN_S = 'viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+const HOUSE = `<svg ${EN_S}><path d="M5 15L16 5l11 10"/><path d="M8 13v14h16V13"/><path d="M13.5 27v-7h5v7"/></svg>`;
+const BOLT = `<svg ${EN_S}><path d="M18 3L8 18h7l-2 11 11-16h-7z"/></svg>`;
+const battery = (pct) => {
+  const w = Math.max(0, Math.min(100, pct ?? 0)) / 100 * 19;
+  return `<svg ${EN_S}><rect x="3" y="9" width="24" height="14" rx="2.5"/><path d="M29.5 13.5v5"/>` +
+    `<rect x="5.5" y="11.5" width="${w.toFixed(1)}" height="9" rx="1" fill="currentColor" stroke="none"/></svg>`;
+};
+const num = (v) => (v == null ? '–' : esc(v));
+export function energyHtml(e) {
+  if (!e) return '';
+  const items = [];
+  const item = (icon, label, value, cls = '') =>
+    items.push(`<span class="en-item${cls}"><span class="en-ic">${icon}</span><span class="en-label">${label}</span> <b>${value}</b></span>`);
+  if (e.date) {
+    if (e.solar_kwh != null) item(ICONS.sun, 'Solar', `${num(e.solar_kwh)} kWh`);
+    if (e.used_kwh != null) item(HOUSE, 'Home', `${num(e.used_kwh)} kWh`);
+    if (e.imported_kwh != null || e.exported_kwh != null) {
+      item(BOLT, 'Grid', `${num(e.imported_kwh)} in <span class="en-sep">·</span> ${num(e.exported_kwh)} out`);
+    }
+    if (e.self_powered != null) items.push(`<span class="en-item en-self"><span class="en-label">Self-powered</span> <b>${num(e.self_powered)}%</b></span>`);
+  }
+  if (e.battery_pct != null) item(battery(e.battery_pct), 'Battery', `${num(e.battery_pct)}%<span class="en-now"> now</span>`, ' en-batt');
+  if (!items.length) return '';
+  const head = e.date ? `${esc(e.label || 'Yesterday')}’s energy` : 'Energy';
+  return `<section class="energy${e.stale ? ' stale' : ''}" aria-label="Home energy">` +
+    `<span class="en-head">${head}</span>${items.join('')}</section>`;
+}
+
 // The title on two lines: the weekdays shown ("Mon – Sun"), then the dates
 // ("Nov 9 – 15"). Snapshots built before the rolling window carry
 // "Week of Nov 8 – 14" instead, split the same way.
@@ -200,7 +232,9 @@ export function weekHtml(snap, { mode = 'web', today = snap.as_of } = {}) {
     `<div class="head-right">` +
     todayHtml(snap.days.find((d) => d.date === today), mode) +
     `<span class="updated">Updated ${esc(stampLabel(snap.built_at))}</span></div></header>` +
-    `<div class="week">${snap.days.map((d) => dayHtml(d, { today, mode })).join('')}</div>`;
+    (mode === 'web' ? energyHtml(snap.energy) : '') +
+    `<div class="week">${snap.days.map((d) => dayHtml(d, { today, mode })).join('')}</div>` +
+    (mode === 'eink' ? energyHtml(snap.energy) : '');
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +262,12 @@ const head = document.querySelector('.week-head'), h1 = head && head.querySelect
 if (h1) {
   let size = parseFloat(getComputedStyle(h1).fontSize);
   while (head.scrollWidth > head.clientWidth + 1 && size > 48) { size -= 2; h1.style.fontSize = size + 'px'; }
+}
+// The energy strip shrinks a little on a day of big numbers.
+const en = document.querySelector('.energy');
+if (en) {
+  let size = parseFloat(getComputedStyle(en).fontSize);
+  while (en.scrollWidth > en.clientWidth + 1 && size > 22) { size -= 1; en.style.fontSize = size + 'px'; }
 }
 for (const day of document.querySelectorAll('.day')) {
   const list = day.querySelector('.events'); if (!list) continue;
@@ -331,4 +371,15 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .past .lo, .past .span, .past .updated { color: #a0a0a0; }
 .past .wx, .past .day-head { border-color: #8a8a8a; }
 .past .ev-allday { background: #efefef; }
+.energy { flex: none; display: flex; align-items: center; gap: 28px; border-top: 4px solid #000;
+  padding-top: 16px; margin-top: 4px; font-size: 31px; white-space: nowrap; }
+.en-now { font-weight: 400; }
+.energy .en-now { display: none; }
+.en-head { font-size: 24px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-right: -6px; }
+.en-item { display: flex; align-items: center; gap: 8px; }
+.en-item b { font-weight: 700; }
+.en-ic svg { width: 1.35em; height: 1.35em; display: block; }
+.en-sep { font-weight: 400; }
+.en-batt { margin-left: auto; padding-left: 28px; border-left: 3px solid #000; }
+.energy.stale .en-head::after { content: ' (earlier)'; font-weight: 400; text-transform: none; }
 `;

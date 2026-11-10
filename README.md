@@ -13,7 +13,7 @@ Firestore, no secrets and no email addresses in the repository.
 ## Features
 
 - **Your calendars, plus shared ones:** both of yours, Home Tasks, the house
-  calendar and US holidays (set in step 5).
+  calendar and US holidays (set in step 6).
 - **Seven days: yesterday, today and the next five**, so today is always the
   second column and the view never runs out at the weekend. The header shows
   the weekdays and dates on view ("Mon – Sun" / "Nov 9 – 15").
@@ -44,6 +44,11 @@ Firestore, no secrets and no email addresses in the repository.
 - **Today at the top:** beside the date, today's weather; under it the US AQI
   with a face for its band (smile for Good … mask for Hazardous, a black chip
   from 101); and to the right, the sunset time.
+- **Home energy** (Enphase, optional): a strip along the bottom of the door
+  display and under the header on the web with yesterday's solar production,
+  home use, grid import and export, the share of the home's use that didn't
+  come from the grid ("self-powered"), and the battery's charge at the last
+  update. If Enphase can't be reached, the last figures stay, marked "earlier".
 - **Household reminders** as black bars at the top of the day: fixed routines
   such as "Bins out tonight" or "Street sweeping today" (their calendar copies
   are hidden), and everything on a calendar marked `as_reminders` (Home Tasks).
@@ -98,6 +103,7 @@ Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
 | `functions/src/render.js` | Headless Chrome screenshot → 16-grey PNG |
 | `functions/src/device.js` | The TRMNL BYOS API: `/api/setup`, `/api/display`, `/api/log`, `/api/image` |
 | `scripts/connect-google.mjs` | One-time Google sign-in that stores the token in Secret Manager |
+| `scripts/connect-enphase.mjs` | One-time Enphase approval that stores the app keys and token in Secret Manager |
 | `scripts/setup-firestore.mjs` | Loads `household.local.json` into `config/household` and the allowlist |
 | `household.local.json` | Your household settings and allowlist. Holds email addresses, so it is git-ignored |
 | `scripts/copy-shared.mjs` | Copies `public/lib` into `functions/shared` before deploys and tests |
@@ -111,12 +117,14 @@ All written by the functions; browsers only read `weeks` and `status`.
 | Document | Contents |
 | --- | --- |
 | `allowlist/{email}` | `role`: `owner` or `member` (as in Fridge Board) |
-| `config/household` | Who's who, which calendars, and the home's coordinates (step 5) |
-| `weeks/{first day}` | The snapshot for a 7-day window: `title` ("Nov 9 – 15"), `subtitle` ("Mon – Sun"), `as_of` (today), `built_at`, `warnings`, and `days[]` with weather and events |
+| `config/household` | Who's who, which calendars, and the home's coordinates (step 6) |
+| `weeks/{first day}` | The snapshot for a 7-day window: `title` ("Nov 9 – 15"), `subtitle` ("Mon – Sun"), `as_of` (today), `built_at`, `warnings`, `energy` (yesterday's kWh totals and battery %), and `days[]` with weather and events |
 | `status/latest` | Last build: `ok`, `week_id`, `image`, `last_error`, `consecutive_failures` |
 | `status/device` | The display's last check-in, battery, and any device waiting for approval |
 | `devices/{MAC}` | An approved display and its API key |
 | `renders/{name}` | Where each PNG is stored and the token in its URL |
+| `private/enphase` | Enphase's current access and refresh tokens (they rotate, so they're kept here, not in Secret Manager) |
+| `private/enphase_cache` | The last energy figures, reused for 20 minutes so repeated Refresh now taps don't use up the API allowance |
 
 Snapshots and images older than 14 days are deleted automatically.
 
@@ -194,7 +202,46 @@ secrets exist.
 If the web page ever says Google needs reconnecting, run step 3.4 again, then
 `npm run deploy`.
 
-### 4. Deploy
+### 4. Connect Enphase (solar and battery)
+
+The functions expect a secret called `ENPHASE`. To skip energy figures, store
+an empty one and go on to step 5:
+
+```sh
+echo '{}' | npx firebase functions:secrets:set ENPHASE --data-file -
+```
+
+Otherwise (Enphase systems, as installed by Blue Raven and monitored in Enlighten):
+
+1. Create a free developer account at
+   [developer-v4.enphase.com](https://developer-v4.enphase.com/signup) and
+   activate it from the email.
+2. **Applications > Create Application.** Plan: **Watt** (free: 10 calls a
+   minute, 1,000 a month; this uses about 12 a day). Name it "Week at a
+   Glance". Under Access Control tick **System Details**, **Site Level
+   Production Monitoring** and **Site Level Consumption Monitoring**.
+3. Note the app's **API key**, **Client ID** and **Client Secret**.
+4. Run:
+
+   ```sh
+   npm run connect-enphase
+   ```
+
+   It opens Enphase's approval page. Sign in with your **Enlighten** (homeowner)
+   account and approve. The page then shows a code: paste it into the terminal.
+   The script finds your system, checks each figure can be read (an error next
+   to one means that Access Control box wasn't ticked), and stores everything
+   in Secret Manager.
+
+Enphase's refresh token lasts a month and is renewed at every daily build, so
+it stays connected as long as the builds run. If it lapses (the web page warns
+"Enphase access expired"), run `npm run connect-enphase` again, then deploy.
+
+The figures are for the last full day ("yesterday"). At the 23:55 build that
+day is just ending, so its home use can be a few minutes short; the 11:55
+build corrects it.
+
+### 5. Deploy
 
 ```sh
 npm run deploy
@@ -218,7 +265,7 @@ On a brand-new project the first deploy is bumpy:
 
 The site is now at `https://<project-id>.web.app`.
 
-### 5. Household settings and allowlist
+### 6. Household settings and allowlist
 
 Put the settings in `household.local.json` in the project folder (git-ignored,
 since it holds your email addresses):
@@ -291,14 +338,14 @@ Keep the texts short: a column fits about 18 characters a line.
   are worked out. Invites to other addresses (a work account) show without
   that person's badge.
 
-### 6. First week
+### 7. First week
 
 Open the site and sign in with Google. "No week has been built yet" is
 expected at first: tap **Refresh now**. The first build takes up to a minute
 while the server starts Chrome; after that the week appears, and the display
 image is ready.
 
-### 7. Set up the TRMNL X
+### 8. Set up the TRMNL X
 
 1. Hold the device's reset to enter Wi-Fi setup, join its "TRMNL" network from
    your phone, enter your Wi-Fi, and under the custom server option enter
@@ -313,7 +360,7 @@ The device does a full refresh twice a day, far less often than TRMNL's
 default, so the 12,000 mAh battery should last toward the top of its 3–6
 month estimate. The web page warns below 20%.
 
-### 8. Optional: email when a build fails
+### 9. Optional: email when a build fails
 
 In Google Cloud **Monitoring > Alerting > Create policy**, add a log-based
 alert matching the text `Build failed`, with your email as the notification
@@ -337,6 +384,9 @@ npx firebase functions:log --only refreshNow -n 40     # or nightlyBuild, device
 | *"Refreshed recently. Try again in 1 min"* | Refresh now runs at most once a minute. Wait, or delete `last_manual_at` from `status/latest` in Firestore |
 | *"No week has been built yet"* | Normal before the first build: tap Refresh now |
 | An event is missing | Check, in order: is it marked private by you; on the `hide_events` list or a reminder's `hide_events`; declined by everyone on it; on a calendar not in `calendars` or not shared with the connected account |
+| Deploy: *"Secret ENPHASE … not found"* | Step 4 was skipped: run `npm run connect-enphase`, or store `{}` to go without |
+| Warning *"Enphase access expired"* | Run `npm run connect-enphase`, then `npm run deploy` |
+| Warning *"Solar data unavailable"* | Enphase didn't answer; the strip shows the last figures, marked "earlier". `npx firebase functions:log --only nightlyBuild` shows which call failed (a 401/403 means an Access Control box is missing from the Enphase app) |
 | A change in `config/household` doesn't show | It applies at the next build (11:55 or 23:55), or tap Refresh now |
 | Code changes don't show | Run `npm run deploy` (or `npx firebase deploy --only functions` for build and display changes only), then Refresh now |
 
@@ -355,7 +405,7 @@ Add `allowlist/<email>` with `role` = `owner` in the emulator UI
 ## Tests
 
 ```sh
-npm test            # week rules, the build and device API, security rules (45 tests)
+npm test            # week rules, the build and device API, security rules (49 tests)
 npm run test:e2e    # the web page in a browser, phone and desktop sizes
 ```
 
@@ -366,7 +416,9 @@ installed Chrome to use it for the browser test and for rendering locally.
 ## Security
 
 - **No secrets in this repository.** The Google client secret and refresh
-  token live in Secret Manager (`npm run connect-google`).
+  token live in Secret Manager (`npm run connect-google`), and so do the
+  Enphase app keys (`npm run connect-enphase`). Enphase's rotating tokens are
+  in Firestore under `private/`, which no browser can read.
 - **No email addresses in this repository.** People, calendars and the
   allowlist live in Firestore and in the git-ignored `household.local.json`.
   Don't commit exported data or service-account keys (also git-ignored).

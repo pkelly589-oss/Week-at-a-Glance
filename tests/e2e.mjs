@@ -82,6 +82,9 @@ assert.equal(await dinner.locator('.loc').textContent(), 'Nido');
 // Desktop and phone: every day's weather box is the same height (checked at desktop size below).
 assert.equal(await page.locator('.day.today .ev', { hasText: 'Compost' }).locator('.loc').count(), 0);
 
+// Home energy strip under the header.
+assert.match(await page.textContent('.energy'), /Yesterday’s energy.*Solar 18\.4 kWh.*Self-powered 79%.*Battery 64%/);
+
 // 4. Low-battery banner.
 assert.match(await page.textContent('#banners'), /battery is at about 14%/);
 await shot(page, 'web-2-phone');

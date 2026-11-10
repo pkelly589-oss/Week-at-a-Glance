@@ -10,6 +10,7 @@
     "test": "npm run shared && node --test tests/week.test.js && firebase emulators:exec --project demo-week-at-a-glance --only firestore \"node --test --test-concurrency=1 tests/functions.test.js tests/rules.test.js\"",
     "test:e2e": "npm run shared && firebase emulators:exec --project demo-week-at-a-glance --only auth,firestore,hosting \"node tests/e2e.mjs\"",
     "connect-google": "node scripts/connect-google.mjs",
+    "connect-enphase": "node scripts/connect-enphase.mjs",
     "deploy": "firebase deploy --only hosting,firestore,storage,functions"
   },
   "devDependencies": {
