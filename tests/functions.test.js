@@ -310,7 +310,7 @@ test('energy: yesterday\'s Enphase totals land in the snapshot, tokens rotate, r
   const week = await build({ fetch });
   assert.equal(week.energy.date, '2026-11-09');
   assert.equal(week.energy.solar_kwh, 18.4);
-  assert.equal(week.energy.self_powered, 79);
+  assert.equal(week.energy.self_powered, 86);
   assert.equal(week.energy.battery_pct, 64);
   assert.deepEqual(week.warnings, []);
   assert.deepEqual(fetch.enphaseRefreshes, ['en-first']);

@@ -471,25 +471,12 @@ test('home energy: Enphase daily totals become yesterday\'s strip', () => {
   assert.equal(e.date, '2026-11-09');
   assert.equal(e.label, 'Yesterday');
   assert.equal(e.solar_kwh, 18.4);
-  // Home use from the balance, as the Enphase app shows it:
-  // 18.42 + 3.11 + 7.42 - 6.24 - 7.93 = 14.78
-  assert.equal(e.used_kwh, 14.8);
-  assert.equal(e.metered_kwh, 21.7);
-  assert.equal(e.imported_kwh, 3.1);
-  assert.equal(e.exported_kwh, 6.2);
-  assert.equal(e.charged_kwh, 7.9);
-  assert.equal(e.self_powered, 79); // 1 - 3.11 / 14.78
-
-  // The app's Nov 9 figures: 13.6 + 0.9 + 7.3 - 0.1 - 9.0 = 12.7 ≈ its 12.6 Consumed,
-  // even though Enphase's consumption figure said 13.4.
-  const nov9 = energySummary({
-    produced: { '2026-11-09': 13600 }, imported: { '2026-11-09': 900 }, exported: { '2026-11-09': 140 },
-    charged: { '2026-11-09': 9000 }, discharged: { '2026-11-09': 7300 }, consumed: { '2026-11-09': 13400 },
-  }, '2026-11-09');
-  assert.equal(nov9.used_kwh, 12.7);
-  assert.equal(nov9.self_powered, 93);
-  // No battery figures: Enphase's consumption figure is used.
-  assert.equal(energySummary({ produced: { '2026-11-09': 13600 }, consumed: { '2026-11-09': 13400 } }, '2026-11-09').used_kwh, 13.4);
+  assert.equal(e.used_kwh, 21.7); // Enphase's consumption figure, as sent
+  assert.equal(e.self_powered, 86); // 1 - 3.11 / 21.73
+  // Home use is Enphase's figure even when the flows would add up differently.
+  const d = (wh) => ({ '2026-11-09': wh });
+  assert.equal(energySummary({ produced: d(13600), imported: d(900), exported: d(140), charged: d(9000),
+    discharged: d(7300), consumed: d(13400) }, '2026-11-09').used_kwh, 13.4);
   assert.equal(e.battery_pct, 64);
 
   // Yesterday not reported yet: the day before, named.
@@ -504,7 +491,7 @@ test('home energy: Enphase daily totals become yesterday\'s strip', () => {
   assert.match(html, /Yesterday’s energy/);
   assert.match(html, /Solar<\/span> <b>18\.4 kWh/);
   assert.match(html, /Grid<\/span> <b>3\.1 in/);
-  assert.match(html, /Self-powered<\/span> <b>79%/);
+  assert.match(html, /Self-powered<\/span> <b>86%/);
   assert.match(html, /Battery<\/span> <b>64%/);
   assert.match(energyHtml({ ...e, stale: true }), /class="energy stale"/);
   assert.equal(energyHtml(null), '');

@@ -672,21 +672,14 @@ const kwh = (wh) => (wh == null ? null : Math.round(wh / 100) / 10);
 // meter simply has fewer numbers). Picks the latest date on or before `day`
 // that has solar production. `self_powered` is the share of the home's use
 // that didn't come from the grid.
-//
-// Home use follows the Enphase app's "Consumed": everything that came in
-// (solar, grid, battery) minus everything that went out (grid, battery).
-// Enphase's own consumption figure can run higher than the app's, so it is
-// only used when a battery or grid figure is missing.
+// Home use is Enphase's own consumption figure ("Consumed" in the app). The
+// app can show a lower figure for a day until all of that day's data is in.
 export function energySummary(series, day, { soc = null, asOf = null } = {}) {
   const dates = Object.keys(series.produced || {}).filter((d) => d <= day).sort();
   const date = dates.at(-1);
   if (!date) return soc == null ? null : { date: null, battery_pct: soc };
   const at = (k) => series[k]?.[date] ?? null;
-  const flows = ['produced', 'imported', 'exported', 'charged', 'discharged'].map(at);
-  const imported = at('imported');
-  const used = flows.every((v) => v != null)
-    ? Math.max(0, flows[0] + flows[1] + flows[4] - flows[2] - flows[3])
-    : at('consumed');
+  const used = at('consumed'), imported = at('imported');
   const selfPowered = used > 0 && imported != null
     ? Math.max(0, Math.min(100, Math.round(100 * (1 - imported / used)))) : null;
   return {
@@ -700,6 +693,5 @@ export function energySummary(series, day, { soc = null, asOf = null } = {}) {
     discharged_kwh: kwh(at('discharged')),
     self_powered: selfPowered,
     battery_pct: soc,
-    metered_kwh: kwh(at('consumed')), // Enphase's own consumption figure, for comparison
   };
 }
