@@ -1,6 +1,7 @@
 // One build of the week: read both calendars and the weather, merge them into a
-// snapshot, store it, and render the e-ink image. Run nightly at 23:55 for the
-// day about to start, and on demand from the web page's "Refresh now".
+// snapshot, store it, and render the e-ink image. Runs hourly at :55 from
+// 6:55am to 11:55pm (the 23:55 run is for the day about to start), and on
+// demand from the web page's "Refresh now".
 //
 // Requirements doc: Architecture; Reliability, privacy and errors.
 //
@@ -105,6 +106,7 @@ export async function runBuild({ db, bucket, fetch, secrets, now = Date.now(), a
     reminders: household.reminders || [],
     location: household.location,
     energy: en.energy,
+    current: wx.current || aq.current != null ? { ...(wx.current || {}), aqi: aq.current } : null,
     warnings: [...cal.warnings, ...wx.warnings, ...aq.warnings, ...energyWarnings, ...en.warnings],
   });
   await weekRef.set(snapshot);

@@ -6,7 +6,7 @@
 // Returns HTML strings. Every piece of calendar text goes through esc(), so
 // event titles can never be read as markup.
 
-import { showRain, stampLabel, aqiInfo, showAqi, AQI_WARN, clockTime } from './week.js';
+import { showRain, stampLabel, aqiInfo, showAqi, AQI_WARN, clockTime, isoDate } from './week.js';
 
 // The e-ink renderer has no emoji font, so emoji would print as boxes there.
 export const plainText = (s) => String(s ?? '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, '').replace(/\s+/g, ' ').trim();
@@ -34,6 +34,8 @@ export const ICONS = {
   drizzle: `<svg viewBox="0 0 32 32" ${S}><path d="${cloudHigh}"/><path d="M11 24v1.5M16 26v1.5M21 24v1.5"/></svg>`,
   rain: `<svg viewBox="0 0 32 32" ${S}><path d="${cloudHigh}"/><path d="M11 23l-1.5 5M16.5 23l-1.5 5M22 23l-1.5 5"/></svg>`,
   snow: `<svg viewBox="0 0 32 32" ${S}><path d="${cloudHigh}"/><path d="M11 24.5h.01M16 27.5h.01M21 24.5h.01M13.5 29.5h.01M18.5 29.5h.01" stroke-width="3.4"/></svg>`,
+  moon: `<svg viewBox="0 0 32 32" ${S}><path d="M22.5 20.5A9.5 9.5 0 0 1 11.5 7.6 9.5 9.5 0 1 0 24.4 20a9.6 9.6 0 0 1-1.9.5z"/></svg>`,
+  'partly-night': `<svg viewBox="0 0 32 32" ${S}><path d="M16 11.2A5.6 5.6 0 0 1 9.4 3.6a5.6 5.6 0 1 0 7.5 7.4 5.7 5.7 0 0 1-.9.2z"/><path d="M11 27h13a5 5 0 0 0 .5-10A7 7 0 0 0 11.3 18.5 4.3 4.3 0 0 0 11 27z" style="fill: var(--wx-fill, #fff)"/></svg>`,
   storm: `<svg viewBox="0 0 32 32" ${S}><path d="${cloudHigh}"/><path d="M17 20l-3.5 5h5L15 30.5"/></svg>`,
 };
 const DROP = `<svg class="drop" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5C8 1.5 3 7.2 3 10.2a5 5 0 0 0 10 0C13 7.2 8 1.5 8 1.5z" fill="currentColor"/></svg>`;
@@ -156,19 +158,28 @@ const THERMO = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strok
 // Today, three rows with their icons in one column: temperature (thermometer),
 // conditions and rain chance (weather icon), air quality (face). Sunset to the
 // right of all three.
-function todayHtml(day, mode) {
+// The header: conditions at the last update (temperature, sky, AQI) when the
+// snapshot has them, else today's forecast; and the sunset. "now" becomes
+// "at 11:55 PM" for the late-night build, shown until the morning.
+function todayHtml(day, mode, snap) {
   if (!day) return '';
+  const cur = snap?.current && snap.as_of === day.date ? snap.current : null;
   const w = day.weather;
   const rows = [];
   const row = (icon, text, cls = '') => rows.push(
     `<span class="tw-ic${cls}" aria-hidden="true">${icon}</span><span class="tw-val">${text}</span>`);
-  if (w) {
+  if (cur?.temp != null) {
+    const when = snap.built_at && isoDate(snap.built_at) !== snap.as_of ? `at ${clockTime(snap.built_at)}` : 'now';
+    row(THERMO, `<span class="tw-temps"><b>${esc(cur.temp)}°</b><span class="lo tw-now"> ${esc(when)}</span></span>`);
+    row(ICONS[cur.icon] || ICONS.cloud, `<span class="tw-label">${esc(cur.label)}</span>`);
+  } else if (w) {
     row(THERMO, `<span class="tw-temps"><b>${esc(w.hi)}°</b><span class="lo"> / ${esc(w.lo)}°</span></span>`);
     row(ICONS[w.icon] || ICONS.cloud,
       `<span class="tw-label">${esc(w.label)}</span>${showRain(w) ? `<span class="rain">${DROP}${esc(w.rain)}%</span>` : ''}`);
   }
-  if (showAqi(day.aqi)) {
-    const a = aqiInfo(day.aqi);
+  const aqiNow = cur?.aqi ?? day.aqi;
+  if (showAqi(aqiNow)) {
+    const a = aqiInfo(aqiNow);
     const warn = a.aqi >= AQI_WARN ? ' aqi-warn' : '';
     const word = mode === 'web' ? ` <span class="aqi-word">${esc(a.label)}</span>` : '';
     row(aqiFace(a.level), `<span class="aqi aqi-${a.level}${warn}" title="Air quality: ${esc(a.label)}"><span>AQI ${a.aqi}${word}</span></span>`,
@@ -206,7 +217,7 @@ export function energyHtml(e) {
     }
     if (e.self_powered != null) items.push(`<span class="en-item en-self"><span class="en-label">Self-powered</span> <b>${num(e.self_powered)}%</b></span>`);
   }
-  if (e.battery_pct != null) item(battery(e.battery_pct), 'Battery', `${num(e.battery_pct)}%<span class="en-now"> now</span>`, ' en-batt');
+  if (e.battery_pct != null) item(battery(e.battery_pct), 'Current Battery', `${num(e.battery_pct)}%`, ' en-batt');
   if (!items.length) return '';
   const head = e.date ? `${esc(e.label || 'Yesterday')}’s energy` : 'Energy';
   return `<section class="energy${e.stale ? ' stale' : ''}" aria-label="Home energy">` +
@@ -230,7 +241,7 @@ export function weekHtml(snap, { mode = 'web', today = snap.as_of } = {}) {
     ? `<p class="warnings">${snap.warnings.map(esc).join(' · ')}</p>` : '';
   return `<header class="week-head"><div><h1>${titleHtml(snap)}</h1>${warn}</div>` +
     `<div class="head-right">` +
-    todayHtml(snap.days.find((d) => d.date === today), mode) +
+    todayHtml(snap.days.find((d) => d.date === today), mode, snap) +
     `<span class="updated">Updated ${esc(stampLabel(snap.built_at))}</span></div></header>` +
     (mode === 'web' ? energyHtml(snap.energy) : '') +
     `<div class="week">${snap.days.map((d) => dayHtml(d, { today, mode })).join('')}</div>` +
@@ -373,8 +384,6 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .past .ev-allday { background: #efefef; }
 .energy { flex: none; display: flex; align-items: center; gap: 28px; border-top: 4px solid #000;
   padding-top: 16px; margin-top: 4px; font-size: 31px; white-space: nowrap; }
-.en-now { font-weight: 400; }
-.energy .en-now { display: none; }
 .en-head { font-size: 24px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-right: -6px; }
 .en-item { display: flex; align-items: center; gap: 8px; }
 .en-item b { font-weight: 700; }

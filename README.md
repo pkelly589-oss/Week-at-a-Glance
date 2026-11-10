@@ -3,8 +3,8 @@
 The household's next week on one screen (yesterday, today and the five days
 after): both Google Calendars
 merged into a plain list per day, with the weather for each day. It is shown
-on a TRMNL X e-ink display by the front door, refreshed twice a day (midnight
-and noon), and on a web page for phones and computers.
+on a TRMNL X e-ink display by the front door, refreshed every hour from 7am to
+midnight, and on a web page for phones and computers.
 
 Sibling to [Fridge Board](https://github.com/pkelly589-oss/fridge-board), and
 built the same way: plain HTML/CSS/JS on Firebase, a household allowlist in
@@ -41,13 +41,17 @@ Firestore, no secrets and no email addresses in the repository.
   home address isn't shown.
 - **Weather** for each day: icon, high/low in °F, and rain chance from 20%.
   Every day's weather block is the same height, so the event lists line up.
-- **Today at the top:** beside the date, today's weather; under it the US AQI
-  with a face for its band (smile for Good … mask for Hazardous, a black chip
-  from 101); and to the right, the sunset time.
+- **Now, at the top:** beside the date, the conditions at the last update:
+  temperature, sky (a moon after dark) and the US AQI with a face for its band
+  (smile for Good … mask for Hazardous, a black chip from 101); and to the
+  right, the sunset time. The late-night update says "at 11:55 PM" instead of
+  "now", since it stays up until 7am. Today's forecast high/low and rain chance
+  are in today's column. If the current conditions can't be had, the header
+  shows today's forecast instead.
 - **Home energy** (Enphase, optional): a strip along the bottom of the door
   display and under the header on the web with yesterday's solar production,
   home use, grid import and export, the share of the home's use that didn't
-  come from the grid ("self-powered"), and the battery's charge at the last
+  come from the grid ("self-powered"), and the current battery charge at the last
   update. If Enphase can't be reached, the last figures stay, marked "earlier".
 - **Household reminders** as black bars at the top of the day: fixed routines
   such as "Bins out tonight" or "Street sweeping today" (their calendar copies
@@ -65,21 +69,22 @@ Firestore, no secrets and no email addresses in the repository.
 
 ```
 Pete's calendar ──┐
-David's calendar ─┼─► nightlyBuild (11:55, 23:55 PT) ──► weeks/{first day} ──► web page
+David's calendar ─┼─► nightlyBuild (hourly at :55, 6:55–23:55 PT) ──► weeks/{first day} ──► web page
 Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
                                    │
                                          └─► Storage PNG ──► /api/display ──► TRMNL X (wakes 00:00, 12:00)
 ```
 
-- **nightlyBuild** runs at 11:55 and 23:55 Pacific; the 23:55 run builds for
+- **nightlyBuild** runs hourly at :55 from 6:55am to 11:55pm Pacific (despite
+  its name, kept so the deployed function isn't replaced); the 23:55 run builds for
   the day about to begin, so the window moves on by a day at midnight. It retries 3 times,
   2 minutes apart. If it can't read any calendar, the display keeps its last picture.
 - **The e-ink image** is the same markup as the web page (`public/lib/view.js`),
   drawn by headless Chrome at 1872 × 1404 and reduced to 16 greys (about 55 KB).
 - **The TRMNL X** talks to this project as its own server ("BYOS"). Each time
-  it wakes it's told to sleep until just after the next midnight or noon. If
-  that refresh's picture isn't ready, it checks back every 15 minutes for up to
-  6 hours.
+  it wakes it's told to sleep until just after the next hour, or from midnight
+  until 7am. If that refresh's picture isn't ready, it checks back every 15
+  minutes (never past the next refresh) for up to 6 hours.
 - **Air quality:** Open-Meteo's air-quality API (CAMS), each day's worst hour.
 - **Sunset** is calculated from the home's coordinates (within a couple of
   minutes of published times), so it shows even when the weather services
@@ -124,7 +129,7 @@ All written by the functions; browsers only read `weeks` and `status`.
 | `devices/{MAC}` | An approved display and its API key |
 | `renders/{name}` | Where each PNG is stored and the token in its URL |
 | `private/enphase` | Enphase's current access and refresh tokens (they rotate, so they're kept here, not in Secret Manager) |
-| `private/enphase_cache` | The last energy figures, reused for 20 minutes so repeated Refresh now taps don't use up the API allowance |
+| `private/enphase_cache` | Yesterday's raw Enphase totals (refetched only at 23:55 and 11:55) and the battery level (reused for 30 minutes), so builds stay within the free API allowance |
 
 Snapshots and images older than 14 days are deleted automatically.
 
@@ -217,7 +222,7 @@ Otherwise (Enphase systems, as installed by Blue Raven and monitored in Enlighte
    [developer-v4.enphase.com](https://developer-v4.enphase.com/signup) and
    activate it from the email.
 2. **Applications > Create Application.** Plan: **Watt** (free: 10 calls a
-   minute, 1,000 a month; this uses about 12 a day). Name it "Week at a
+   minute, 1,000 a month; this uses about 28 a day, roughly 870 a month). Name it "Week at a
    Glance". Under Access Control tick **System Details**, **Site Level
    Production Monitoring** and **Site Level Consumption Monitoring**.
 3. Note the app's **API key**, **Client ID** and **Client Secret**.
@@ -239,7 +244,8 @@ it stays connected as long as the builds run. If it lapses (the web page warns
 
 The figures are for the last full day ("yesterday"). At the 23:55 build that
 day is just ending, so its home use can be a few minutes short; the 11:55
-build corrects it.
+build corrects it. The other hourly builds fetch only the battery level, one
+call each, and Refresh now reuses a battery level under 30 minutes old.
 
 ### 5. Deploy
 
@@ -354,11 +360,12 @@ image is ready.
    connect". In Firestore, create `devices/<that MAC>` with any field (for
    example `approved` = `true`).
 3. Reset or wake the device. It fetches a key, shows the week, and from then on
-   wakes just after midnight and noon.
+   wakes just after each hour from 7am to midnight, and sleeps through the night.
 
-The device does a full refresh twice a day, far less often than TRMNL's
-default, so the 12,000 mAh battery should last toward the top of its 3–6
-month estimate. The web page warns below 20%.
+The device refreshes 18 times a day. At an estimated 0.5–1.5 mAh per refresh,
+plus its sleep draw, the 12,000 mAh battery should last about a year or more
+between charges (an estimate: TRMNL doesn't publish per-refresh figures for the
+X). The web page warns below 20%.
 
 ### 9. Optional: email when a build fails
 
@@ -387,7 +394,7 @@ npx firebase functions:log --only refreshNow -n 40     # or nightlyBuild, device
 | Deploy: *"Secret ENPHASE … not found"* | Step 4 was skipped: run `npm run connect-enphase`, or store `{}` to go without |
 | Warning *"Enphase access expired"* | Run `npm run connect-enphase`, then `npm run deploy` |
 | Warning *"Solar data unavailable"* | Enphase didn't answer; the strip shows the last figures, marked "earlier". `npx firebase functions:log --only nightlyBuild` shows which call failed (a 401/403 means an Access Control box is missing from the Enphase app) |
-| A change in `config/household` doesn't show | It applies at the next build (11:55 or 23:55), or tap Refresh now |
+| A change in `config/household` doesn't show | It applies at the next hourly build (at :55), or tap Refresh now |
 | Code changes don't show | Run `npm run deploy` (or `npx firebase deploy --only functions` for build and display changes only), then Refresh now |
 
 ## Local development

@@ -41,10 +41,11 @@ const OPEN_METEO = {
     temperature_2m_min: [48, 50, 52, 50, 49, 47, 46, 47],
     precipitation_probability_max: [0, 10, 20, 80, 40, 10, 0, 0],
   },
+  current: { time: '2026-11-09T23:45', interval: 900, temperature_2m: 53.4, weather_code: 0, is_day: 0 },
 };
 const AIR_QUALITY = { hourly: {
   time: ['2026-11-10T08:00', '2026-11-10T16:00', '2026-11-12T12:00'], us_aqi: [40, 72, 130],
-} };
+}, current: { time: '2026-11-09T23:00', us_aqi: 33 } };
 const NWS_FORECAST = { properties: { periods: [
   { startTime: '2026-11-10T06:00:00-08:00', isDaytime: true, temperature: 61, shortForecast: 'Cloudy', probabilityOfPrecipitation: { value: 10 } },
   { startTime: '2026-11-10T18:00:00-08:00', isDaytime: false, temperature: 50, shortForecast: 'Cloudy', probabilityOfPrecipitation: { value: 10 } },
@@ -244,7 +245,7 @@ test('an unknown display is refused at setup and shown on the page for approval'
   assert.equal((await db.doc('status/device').get()).data().pending_mac, MAC);
 });
 
-test('an approved display gets a key, then the latest image and a sleep until midnight', async () => {
+test('an approved display gets a key, then the latest image and a sleep until 7am', async () => {
   const bucket = fakeBucket();
   await build({ bucket });
   await db.doc(`devices/${MAC}`).set({ approved: true });
@@ -264,7 +265,7 @@ test('an approved display gets a key, then the latest image and a sleep until mi
   const status = (await db.doc('status/latest').get()).data();
   assert.equal(disp.body.status, 0);
   assert.equal(disp.body.filename, status.image);
-  assert.equal(disp.body.refresh_rate, 12 * 3600); // 00:00:30 to noon, plus the 30 s margin
+  assert.equal(disp.body.refresh_rate, 7 * 3600); // 00:00:30 to 7am, plus the 30 s margin
   assert.equal(typeof disp.body.refresh_rate, 'number');
   assert.ok(disp.body.image_url.startsWith(`https://week.example.web.app/api/image/${status.image}.png?t=`));
   assert.equal((await db.doc('status/device').get()).data().battery_pct, 25);
@@ -277,16 +278,19 @@ test('an approved display gets a key, then the latest image and a sleep until mi
   assert.equal((await call(handler, { path: u.pathname, query: { t: 'guess' } })).code, 404);
 });
 
-test("the display refreshes at midnight and noon, and retries if that refresh's image isn't ready", () => {
+test("the display refreshes hourly from 7am to midnight, and retries if that refresh's image isn't ready", () => {
   const at = (t, d = '2026-11-10') => Date.parse(`${d}T${t}-08:00`);
-  // Fresh images: sleep until the next noon or midnight.
-  assert.equal(refreshRate(at('00:00:30'), at('23:55:00', '2026-11-09')), 12 * 3600);
-  assert.equal(refreshRate(at('12:00:30'), at('11:55:00')), 12 * 3600);
-  assert.equal(refreshRate(at('15:00:00'), at('11:56:00')), 9 * 3600 + 30);
-  // The noon build hasn't landed: only the midnight image exists.
-  assert.equal(refreshRate(at('12:00:30'), at('23:55:00', '2026-11-09')), RETRY_SECONDS);
-  assert.equal(refreshRate(at('17:50:00'), at('23:55:00', '2026-11-09')), RETRY_SECONDS);
-  assert.equal(refreshRate(at('18:00:00'), at('23:55:00', '2026-11-09')), 6 * 3600 + 30); // gave up: wait for midnight
+  // Fresh images: sleep until the next hour (or, after midnight, until 7am).
+  assert.equal(refreshRate(at('00:00:30'), at('23:55:00', '2026-11-09')), 7 * 3600);
+  assert.equal(refreshRate(at('12:00:30'), at('11:55:00')), 3600);
+  assert.equal(refreshRate(at('15:00:00'), at('14:56:00')), 3600 + 30);
+  // The noon build hasn't landed: check back in 15 minutes.
+  assert.equal(refreshRate(at('12:00:30'), at('10:55:00')), RETRY_SECONDS);
+  // ...but never past the next hour's refresh.
+  assert.equal(refreshRate(at('12:50:00'), at('10:55:00')), 600 + 30);
+  // The midnight build failed: retry through the night for 6 hours, then wait for 7am.
+  assert.equal(refreshRate(at('03:00:00'), at('22:55:00', '2026-11-09')), RETRY_SECONDS);
+  assert.equal(refreshRate(at('06:30:00'), at('22:55:00', '2026-11-09')), 1800 + 30);
   assert.equal(refreshRate(at('00:00:30'), undefined), RETRY_SECONDS);
   assert.equal(batteryPercent('4.2'), 100);
   assert.equal(batteryPercent('3.4'), 0);
@@ -301,6 +305,13 @@ test('air quality down: earlier values are kept, with a warning only if today ha
   await db.doc('weeks/2026-11-09').delete();
   const fresh = await build({ fetch: fakeFetch({ airDown: true }) });
   assert.deepEqual(fresh.warnings, ['Air quality unavailable']);
+});
+
+test('the header gets the conditions at build time: temperature, sky and AQI now', async () => {
+  const week = await build();
+  assert.deepEqual(week.current, { temp: 53, icon: 'moon', label: 'Clear', at: '2026-11-09T23:45', aqi: 33 });
+  const noSky = await build({ fetch: fakeFetch({ openMeteoDown: true }), now: NOW + 36e5 });
+  assert.deepEqual(noSky.current, { aqi: 33 }); // the header falls back to today's forecast
 });
 
 // ---- home energy (Enphase) -------------------------------------------------
@@ -323,6 +334,20 @@ test('energy: yesterday\'s Enphase totals land in the snapshot, tokens rotate, r
   const again = fakeFetch();
   assert.equal((await build({ fetch: again, now: NOW + 10 * 6e4 })).energy.solar_kwh, 18.4);
   assert.equal(again.enphaseCalls().length, 0);
+
+  // An hour later (a Refresh now at 00:55): yesterday's totals are kept and
+  // only the battery level is fetched, one call.
+  const hourly = fakeFetch();
+  await build({ fetch: hourly, now: NOW + 36e5 });
+  assert.deepEqual(hourly.enphaseCalls().map((c) => new URL(c).pathname.split('/').pop()), ['battery']);
+
+  // The 11:55 build fetches the now-complete totals again, once.
+  const noon = fakeFetch();
+  await build({ fetch: noon, now: Date.parse('2026-11-10T11:55:00-08:00') });
+  assert.equal(noon.enphaseCalls().length, 6);
+  const afterNoon = fakeFetch();
+  await build({ fetch: afterNoon, now: Date.parse('2026-11-10T12:55:00-08:00') });
+  assert.equal(afterNoon.enphaseCalls().length, 1);
 
   // Two days on: the access token has expired, so the stored (rotated)
   // refresh token is used, not the one from the original connect.

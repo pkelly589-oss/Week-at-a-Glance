@@ -12,8 +12,9 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { lastRefreshAt, secondsToNextRefresh } from '../shared/week.js';
 
-// While the picture for today isn't ready yet (the nightly build failed or is
-// still retrying), check again this often, but only in the small hours.
+// While the picture for the latest refresh isn't ready yet (its build failed
+// or is still retrying), check again this often, for up to 6 hours, and never
+// later than the next scheduled refresh.
 export const RETRY_SECONDS = 15 * 60;
 export const RETRY_WINDOW_MS = 6 * 36e5;
 // The build runs 5 minutes before each refresh; anything built since 15
@@ -34,14 +35,16 @@ export function batteryPercent(volts) {
   return Math.max(0, Math.min(100, Math.round(((v - 3.4) / (4.2 - 3.4)) * 100)));
 }
 
-// How long the device should sleep: until the next midnight or noon. If the
-// image for the latest refresh isn't there yet (the build failed or is still
-// retrying), check back every 15 minutes for up to 6 hours after it.
+// How long the device should sleep: until the next refresh (on the hour from
+// 7am to midnight). If the image for the latest refresh isn't there yet (the
+// build failed or is still retrying), check back every 15 minutes for up to 6
+// hours after it, never sleeping past the next refresh.
 export function refreshRate(now, latestBuiltAt) {
   const due = lastRefreshAt(now);
   const fresh = latestBuiltAt != null && latestBuiltAt >= due - BUILD_LEAD_MS;
-  if (!fresh && now < due + RETRY_WINDOW_MS) return RETRY_SECONDS;
-  return secondsToNextRefresh(now);
+  const next = secondsToNextRefresh(now);
+  if (!fresh && now < due + RETRY_WINDOW_MS) return Math.min(RETRY_SECONDS, next);
+  return next;
 }
 
 async function latestRender(db) {

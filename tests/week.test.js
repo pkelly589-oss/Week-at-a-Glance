@@ -5,7 +5,7 @@ import {
   isoDate, startOfDay, windowOf, rangeTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
-  parseEnphaseDaily, parseSoc, energySummary,
+  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent,
 } from '../public/lib/week.js';
 import { weekHtml, einkDocument, esc, plainText, energyHtml } from '../public/lib/view.js';
 import { sampleEnergy, sampleSnapshot } from './fixtures.js';
@@ -417,15 +417,16 @@ test("a Gmail-created copy's automatic privacy doesn't hide the real event", () 
   assert.equal(buildEvents([{ person: 'pete', events: [ev({ summary: 'Flight to NYC', eventType: 'fromGmail', visibility: 'private' })] }], PEOPLE).length, 1);
 });
 
-test('refreshes come at midnight and noon, across the clock changes', () => {
+test('refreshes come on the hour from 7am to midnight, across the clock changes', () => {
   const t = (s) => Date.parse(s);
-  assert.equal(secondsToNextRefresh(t('2026-11-10T00:00:30-08:00')), 12 * 3600);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T00:00:30-08:00')), 7 * 3600); // asleep until 7am
   assert.equal(secondsToNextRefresh(t('2026-11-10T11:59:00-08:00')), 60 + 30);
-  assert.equal(secondsToNextRefresh(t('2026-11-10T18:00:00-08:00')), 6 * 3600 + 30);
-  // The night the clocks go back (Nov 1, 2026), midnight to noon is 13 hours.
-  assert.equal(secondsToNextRefresh(t('2026-11-01T00:00:00-07:00')), 13 * 3600 + 30);
-  assert.equal(new Date(lastRefreshAt(t('2026-11-10T09:00:00-08:00'))).toISOString(), '2026-11-10T08:00:00.000Z');
-  assert.equal(new Date(lastRefreshAt(t('2026-11-10T13:00:00-08:00'))).toISOString(), '2026-11-10T20:00:00.000Z');
+  assert.equal(secondsToNextRefresh(t('2026-11-10T18:00:00-08:00')), 3600 + 30);
+  assert.equal(secondsToNextRefresh(t('2026-11-10T23:30:00-08:00')), 1800 + 30); // midnight
+  // The night the clocks go back (Nov 1, 2026), midnight to 7am is 8 hours.
+  assert.equal(secondsToNextRefresh(t('2026-11-01T00:00:00-07:00')), 8 * 3600 + 30);
+  assert.equal(new Date(lastRefreshAt(t('2026-11-10T09:20:00-08:00'))).toISOString(), '2026-11-10T17:00:00.000Z');
+  assert.equal(new Date(lastRefreshAt(t('2026-11-10T03:00:00-08:00'))).toISOString(), '2026-11-10T08:00:00.000Z');
 });
 
 test('birthdays get their own look; plans around birthdays stay events', () => {
@@ -492,7 +493,7 @@ test('home energy: Enphase daily totals become yesterday\'s strip', () => {
   assert.match(html, /Solar<\/span> <b>18\.4 kWh/);
   assert.match(html, /Grid<\/span> <b>3\.1 in/);
   assert.match(html, /Self-powered<\/span> <b>86%/);
-  assert.match(html, /Battery<\/span> <b>64%/);
+  assert.match(html, /Current Battery<\/span> <b>64%/);
   assert.match(energyHtml({ ...e, stale: true }), /class="energy stale"/);
   assert.equal(energyHtml(null), '');
   // Where it goes: under the header on the web, along the bottom on the door.
@@ -501,4 +502,28 @@ test('home energy: Enphase daily totals become yesterday\'s strip', () => {
   assert.ok(web.indexOf('class="energy') < web.indexOf('class="week"'));
   assert.ok(eink.indexOf('class="energy') > eink.indexOf('class="week"'));
   assert.ok(!weekHtml(sampleSnapshot({ energy: null }), { mode: 'eink' }).includes('class="energy'));
+});
+
+test('the header shows conditions now, else today\'s forecast', () => {
+  assert.deepEqual(parseOpenMeteoCurrent({ current: { time: '2026-11-10T21:00', temperature_2m: 51.6, weather_code: 2, is_day: 0 } }),
+    { temp: 52, icon: 'partly-night', label: 'Partly cloudy', at: '2026-11-10T21:00' });
+  assert.equal(weatherInfo(0, 1).icon, 'sun');
+  assert.equal(weatherInfo(0, 0).icon, 'moon');
+  assert.equal(parseOpenMeteoCurrent({}), null);
+  assert.equal(parseAirCurrent({ current: { us_aqi: 71.4 } }), 71);
+  assert.equal(parseAirCurrent({ current: {} }), null);
+
+  const head = (snap) => weekHtml(snap, { mode: 'web' }).split('class="week"')[0];
+  // Built during the day: "58° now", the sky now, the AQI now.
+  const day = head(sampleSnapshot({ builtAt: Date.parse('2026-11-10T07:55:00-08:00') }));
+  assert.match(day, /<b>58°<\/b><span class="lo tw-now"> now<\/span>/);
+  assert.match(day, /tw-label">Cloudy</);
+  assert.match(day, /AQI 52/);
+  assert.ok(!/\/ 52°/.test(day), 'no forecast high/low in the header');
+  // The 23:55 build, shown until morning, says when.
+  assert.match(head(sampleSnapshot()), /58°<\/b><span class="lo tw-now"> at 11:55 PM/);
+  // Without current conditions: today's forecast, as before.
+  const fallback = head(sampleSnapshot({ current: null }));
+  assert.match(fallback, /<b>60°<\/b><span class="lo"> \/ 52°/);
+  assert.match(fallback, /AQI 64/);
 });

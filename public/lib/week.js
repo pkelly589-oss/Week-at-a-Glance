@@ -140,9 +140,9 @@ export function windowOf(iso) {
   };
 }
 
-// The display refreshes twice a day, at midnight and noon Pacific
-// (requirements: Hardware > Refresh). The build runs 5 minutes before each.
-export const REFRESH_HOURS = [0, 12];
+// The display refreshes every hour from 7am to midnight Pacific, and sleeps
+// from midnight to 7am. The build runs 5 minutes before each refresh.
+export const REFRESH_HOURS = [0, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
 
 // The instant a Pacific date reaches a given hour, DST-safe.
 export function zonedTime(iso, hour) {
@@ -456,12 +456,14 @@ export function layoutWeek(events, week) {
 // Weather
 // ---------------------------------------------------------------------------
 
-// WMO weather codes (Open-Meteo) → one of eight icons and a short label.
-export function weatherInfo(code) {
+// WMO weather codes (Open-Meteo) → an icon and a short label. With
+// isDay === false (current conditions after dark), clear skies get a moon.
+export function weatherInfo(code, isDay = true) {
   const c = Number(code);
-  if (c === 0) return { icon: 'sun', label: 'Sunny' };
-  if (c === 1) return { icon: 'sun', label: 'Mostly sunny' };
-  if (c === 2) return { icon: 'partly', label: 'Partly cloudy' };
+  const night = isDay === false || isDay === 0;
+  if (c === 0) return night ? { icon: 'moon', label: 'Clear' } : { icon: 'sun', label: 'Sunny' };
+  if (c === 1) return night ? { icon: 'moon', label: 'Mostly clear' } : { icon: 'sun', label: 'Mostly sunny' };
+  if (c === 2) return { icon: night ? 'partly-night' : 'partly', label: 'Partly cloudy' };
   if (c === 3) return { icon: 'cloud', label: 'Cloudy' };
   if (c === 45 || c === 48) return { icon: 'fog', label: 'Fog' };
   if (c >= 51 && c <= 57) return { icon: 'drizzle', label: 'Drizzle' };
@@ -509,6 +511,20 @@ export function parseOpenMeteo(json) {
   return out;
 }
 
+// Open-Meteo `current` block → { temp, icon, label, at } (or null).
+// at: the observation time, as Pacific local time "YYYY-MM-DDTHH:MM".
+export function parseOpenMeteoCurrent(json) {
+  const c = json?.current;
+  if (!c || c.temperature_2m == null || !Number.isFinite(+c.temperature_2m)) return null;
+  return { temp: Math.round(+c.temperature_2m), ...weatherInfo(c.weather_code, c.is_day), at: c.time || null };
+}
+
+// Open-Meteo air-quality `current` block → the US AQI right now (or null).
+export function parseAirCurrent(json) {
+  const v = json?.current?.us_aqi;
+  return v != null && Number.isFinite(+v) ? Math.round(+v) : null;
+}
+
 // NWS /forecast periods (day and night halves) → the same shape.
 export function parseNws(json) {
   const out = {};
@@ -528,9 +544,10 @@ export function parseNws(json) {
 // The snapshot both outputs draw from
 // ---------------------------------------------------------------------------
 
-export function buildSnapshot({ asOf, builtAt, week, events, weather, air = {}, reminders = [], location = null, warnings = [], energy = null }) {
+export function buildSnapshot({ asOf, builtAt, week, events, weather, air = {}, reminders = [], location = null, warnings = [], energy = null, current = null }) {
   const days = layoutWeek(events, week);
   return {
+    current,                     // conditions at build time: { temp, icon, label, aqi, at } (or null)
     energy,                      // yesterday's solar, battery and grid totals (or null)
     week_id: week.id,
     title: rangeTitle(week.start, week.end),          // "Nov 9 – 15"

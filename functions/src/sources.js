@@ -4,7 +4,7 @@
 // Requirements doc: Data sources.
 
 import { createHash } from 'node:crypto';
-import { TZ, parseOpenMeteo, parseNws, parseAirQuality, parseEnphaseDaily, parseSoc, energySummary, addDays, dayShort, monthDay } from '../shared/week.js';
+import { TZ, parseOpenMeteo, parseOpenMeteoCurrent, parseNws, parseAirQuality, parseAirCurrent, zonedTime, parseEnphaseDaily, parseSoc, energySummary, addDays, dayShort, monthDay } from '../shared/week.js';
 
 // ---------------------------------------------------------------------------
 // Google Calendar
@@ -66,18 +66,20 @@ export async function listEvents(calendarId, { timeMin, timeMax }, token, fetch)
 
 const UA = 'week-at-a-glance home display';
 
-// Open-Meteo, all seven days in one call (yesterday included).
+// Open-Meteo, all seven days in one call (yesterday included), plus the
+// conditions right now for the header. Returns { days, current }.
 export async function openMeteo({ lat, lon }, week, fetch) {
   const q = new URLSearchParams({
     latitude: String(lat), longitude: String(lon),
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+    current: 'temperature_2m,weather_code,is_day',
     temperature_unit: 'fahrenheit', timezone: TZ,
     start_date: week.start, end_date: week.end,
   });
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { headers: { 'User-Agent': UA } });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body || body.error) throw new Error(`Open-Meteo: ${body?.reason || res.status}`);
-  return parseOpenMeteo(body);
+  return { days: parseOpenMeteo(body), current: parseOpenMeteoCurrent(body) };
 }
 
 // National Weather Service: forward-looking days only.
@@ -97,11 +99,13 @@ export async function nws({ lat, lon }, fetch) {
 // 3. any day still missing keeps what the previous snapshot had for it.
 // Days already past that come from the previous snapshot are normal (NWS has no
 // past days); only a stale forecast for today or later earns a warning.
+// `current` (conditions now) comes only from Open-Meteo; without it the header
+// shows today's forecast instead.
 export async function weekWeather(location, week, asOf, previousDays, fetch) {
   const warnings = [];
-  let got = {};
+  let got = {}, current = null;
   try {
-    got = await openMeteo(location, week, fetch);
+    ({ days: got, current } = await openMeteo(location, week, fetch));
   } catch (e1) {
     try {
       got = await nws(location, fetch);
@@ -117,7 +121,7 @@ export async function weekWeather(location, week, asOf, previousDays, fetch) {
     else if (previousDays?.[date]) { out[date] = { ...previousDays[date], stale: true }; kept.push(date); }
   }
   if (kept.some((d) => d >= asOf) && !warnings.length) warnings.push('Some weather is from an earlier forecast');
-  return { weather: out, warnings };
+  return { weather: out, current, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -130,16 +134,17 @@ export async function weekWeather(location, week, asOf, previousDays, fetch) {
 // what the previous snapshot had.
 export async function weekAir({ lat, lon }, week, asOf, previous, fetch) {
   const warnings = [];
-  let got = {};
+  let got = {}, current = null;
   try {
     const q = new URLSearchParams({
-      latitude: String(lat), longitude: String(lon), hourly: 'us_aqi', timezone: TZ,
+      latitude: String(lat), longitude: String(lon), hourly: 'us_aqi', current: 'us_aqi', timezone: TZ,
       start_date: week.start, end_date: week.end,
     });
     const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}`, { headers: { 'User-Agent': UA } });
     const body = await res.json().catch(() => null);
     if (!res.ok || !body || body.error) throw new Error(`Air quality: ${body?.reason || res.status}`);
     got = parseAirQuality(body);
+    current = parseAirCurrent(body);
   } catch (e) {
     console.warn('Air quality failed', e.message);
     if (!previous?.[asOf]) warnings.push('Air quality unavailable');
@@ -149,7 +154,7 @@ export async function weekAir({ lat, lon }, week, asOf, previous, fetch) {
     const v = got[date] ?? previous?.[date];
     if (v != null) out[date] = v;
   }
-  return { air: out, warnings };
+  return { air: out, current, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -163,14 +168,17 @@ export async function weekAir({ lat, lon }, week, asOf, previous, fetch) {
 // private/enphase (functions only; the rules deny every browser). `seed`
 // records which connect it came from, so reconnecting starts a fresh chain.
 //
-// Free "Watt" plan: 10 calls a minute, 1,000 a month. A build makes 6 calls,
-// and a result less than 20 minutes old is reused, so two builds a day plus
-// any "Refresh now" taps stay far under the limit.
+// Free "Watt" plan: 10 calls a minute, 1,000 a month. Yesterday's totals (5
+// calls) are fetched only by the first build of a day (23:55) and again after
+// 11:50, when the day's data is complete; every other build fetches just the
+// battery level (1 call), and a battery level under 30 minutes old is reused.
+// About 28 calls a day, 870 a month, leaving room for "Refresh now".
 
 export class EnphaseAuthError extends Error {}
 
 const ENPHASE = 'https://api.enphaseenergy.com';
-const CACHE_MS = 20 * 60 * 1000;
+const SOC_CACHE_MS = 30 * 60 * 1000;
+const TOTALS_RECHECK_MS = 10 * 60 * 1000; // totals are refetched from 11:50
 const fingerprint = (s) => createHash('sha256').update(String(s)).digest('hex').slice(0, 16);
 
 // Reads the ENPHASE secret. Empty, "{}" or "off" means energy is switched off.
@@ -223,45 +231,59 @@ async function enphaseGet(cfg, token, path, params, fetch) {
 
 // Yesterday's totals (relative to asOf) and the battery's charge right now.
 // Each figure is fetched on its own, so a system without a battery or a
-// consumption meter still shows what it has. On failure it falls back to the
-// previous snapshot's figures for the same day, then to nothing.
+// consumption meter still shows what it has. The raw daily figures and the
+// battery level are kept in private/enphase_cache so most builds need only one
+// call. On failure it falls back to the previous snapshot's figures, then to
+// nothing.
+const TOTALS = [
+  ['produced', 'energy_lifetime', 'production'],
+  ['consumed', 'consumption_lifetime', 'consumption'],
+  ['imported', 'energy_import_lifetime', 'import'],
+  ['exported', 'energy_export_lifetime', 'export'],
+  ['battery', 'battery_lifetime', null],
+];
+
+async function fetchTotals(cfg, token, day, fetch) {
+  const range = { start_date: addDays(day, -1), end_date: day };
+  const got = await Promise.allSettled(TOTALS.map(([, path]) => enphaseGet(cfg, token, path, range, fetch)));
+  const series = {};
+  got.forEach((r, i) => {
+    const [name, path, key] = TOTALS[i];
+    if (r.status !== 'fulfilled') { console.warn(`Enphase ${path} failed`, r.reason?.message); return; }
+    if (key) series[name] = parseEnphaseDaily(r.value, key);
+    else { series.charged = parseEnphaseDaily(r.value, 'charge'); series.discharged = parseEnphaseDaily(r.value, 'discharge'); }
+  });
+  console.log('Enphase daily Wh', JSON.stringify(series));
+  return Object.keys(series.produced || {}).length ? series : null;
+}
+
 export async function homeEnergy(cfg, db, asOf, previous, fetch, now = Date.now()) {
   if (!cfg) return { energy: null, warnings: [] };
   const day = addDays(asOf, -1);
   const cacheRef = db.doc('private/enphase_cache');
-  const cached = (await cacheRef.get()).data();
-  if (cached?.as_of === asOf && cached.system_id === String(cfg.system_id) && now - cached.fetched_at < CACHE_MS) {
-    return { energy: cached.energy, warnings: [] };
-  }
+  const c = (await cacheRef.get()).data() || {};
+  const mine = c.system_id === String(cfg.system_id) && c.as_of === asOf;
+  const recheckFrom = zonedTime(asOf, 12) - TOTALS_RECHECK_MS;
+  const totalsOk = mine && c.series && !(now >= recheckFrom && c.totals_at < recheckFrom);
+  const socOk = mine && c.soc_at != null && now - c.soc_at < SOC_CACHE_MS;
+  const summary = (series, soc) => energySummary(series || {}, day, { asOf, soc });
+  if (totalsOk && socOk) return { energy: summary(c.series, c.soc), warnings: [] };
+
   try {
     const token = await enphaseAccessToken(cfg, db, fetch, now);
-    const range = { start_date: addDays(day, -1), end_date: day };
-    const asks = [
-      ['produced', 'energy_lifetime', 'production'],
-      ['consumed', 'consumption_lifetime', 'consumption'],
-      ['imported', 'energy_import_lifetime', 'import'],
-      ['exported', 'energy_export_lifetime', 'export'],
-      ['battery', 'battery_lifetime', null],
-    ];
-    const [soc, ...got] = await Promise.allSettled([
-      enphaseGet(cfg, token, 'telemetry/battery', {}, fetch),
-      ...asks.map(([, path]) => enphaseGet(cfg, token, path, range, fetch)),
+    const [series, soc] = await Promise.all([
+      totalsOk ? c.series : fetchTotals(cfg, token, day, fetch),
+      socOk ? c.soc : enphaseGet(cfg, token, 'telemetry/battery', {}, fetch)
+        .then((b) => parseSoc(b?.last_reported_aggregate_soc))
+        .catch((e) => { console.warn('Enphase battery telemetry failed', e.message); return null; }),
     ]);
-    const series = {};
-    got.forEach((r, i) => {
-      const [name, path, key] = asks[i];
-      if (r.status !== 'fulfilled') { console.warn(`Enphase ${path} failed`, r.reason?.message); return; }
-      if (key) series[name] = parseEnphaseDaily(r.value, key);
-      else { series.charged = parseEnphaseDaily(r.value, 'charge'); series.discharged = parseEnphaseDaily(r.value, 'discharge'); }
+    if (!series) throw new Error('Enphase returned no totals');
+    await cacheRef.set({
+      system_id: String(cfg.system_id), as_of: asOf, series,
+      totals_at: totalsOk ? c.totals_at : now,
+      soc, soc_at: socOk ? c.soc_at : now,
     });
-    if (soc.status !== 'fulfilled') console.warn('Enphase battery telemetry failed', soc.reason?.message);
-    console.log('Enphase daily Wh', JSON.stringify(series));
-    const energy = energySummary(series, day, {
-      asOf, soc: soc.status === 'fulfilled' ? parseSoc(soc.value?.last_reported_aggregate_soc) : null,
-    });
-    if (!energy) throw new Error('Enphase returned no data');
-    await cacheRef.set({ as_of: asOf, system_id: String(cfg.system_id), fetched_at: now, energy });
-    return { energy, warnings: [] };
+    return { energy: summary(series, soc), warnings: [] };
   } catch (e) {
     console.warn('Home energy failed', e.message);
     const why = e instanceof EnphaseAuthError ? e.message : 'Solar data unavailable';

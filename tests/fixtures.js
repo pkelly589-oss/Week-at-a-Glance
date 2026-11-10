@@ -129,11 +129,13 @@ export const sampleEnergy = (asOf = '2026-11-10') => energySummary({
   discharged: daily(ENPHASE.battery_lifetime, 'discharge'),
 }, '2026-11-09', { asOf, soc: 64 });
 
-export function sampleSnapshot({ asOf = '2026-11-10', builtAt = Date.parse('2026-11-09T23:55:00-08:00'), warnings = [], energy = sampleEnergy(asOf) } = {}) {
+export const CURRENT = { temp: 58, icon: 'cloud', label: 'Cloudy', at: '2026-11-10T07:45', aqi: 52 };
+
+export function sampleSnapshot({ asOf = '2026-11-10', builtAt = Date.parse('2026-11-09T23:55:00-08:00'), warnings = [], energy = sampleEnergy(asOf), current = CURRENT } = {}) {
   const week = windowOf(asOf);
   const { hide_locations: hideLocations, reminders, hide_events: hideEvents } = HOUSEHOLD;
   return buildSnapshot({
-    asOf, builtAt, week, warnings, weather: WEATHER, air: AIR, reminders, location: HOUSEHOLD.location, energy,
+    asOf, builtAt, week, warnings, weather: WEATHER, air: AIR, reminders, location: HOUSEHOLD.location, energy, current,
     events: buildEvents(calendarSources(), HOUSEHOLD.people, { hideLocations, reminders, hideEvents }),
   });
 }

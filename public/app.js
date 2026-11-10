@@ -151,7 +151,7 @@ function render() {
   show('view-week');
   const today = isoDate(Date.now());
   if (!state.week) {
-    $('week').innerHTML = '<p class="muted center">No week has been built yet. Tap “Refresh now”, or wait for tonight\'s update.</p>';
+    $('week').innerHTML = '<p class="muted center">No week has been built yet. Tap “Refresh now”, or wait for the next hourly update.</p>';
     return;
   }
   $('week').innerHTML = weekHtml(state.week, { mode: 'web', today });

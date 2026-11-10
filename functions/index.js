@@ -59,14 +59,14 @@ async function build({ asOf, manual }) {
   }
 }
 
-// Twice a day, at 11:55 and 23:55, so the image is ready before the device
-// wakes at noon and midnight. The 23:55 run builds for the day about to begin
-// (Saturday night builds next week). A failed run is retried up to 3 times,
+// Hourly at :55 from 6:55am to 11:55pm, so each image is ready before the
+// device wakes on the hour from 7am to midnight. The 23:55 run builds for the
+// day about to begin. A failed run is retried up to 3 times,
 // 2 minutes apart. (Still called nightlyBuild so the deployed function keeps
 // its name.)
 export const nightlyBuild = onSchedule({
   ...BUILD_OPTS,
-  schedule: '55 11,23 * * *', timeZone: TZ,
+  schedule: '55 6-23 * * *', timeZone: TZ,
   retryCount: 3, minBackoffSeconds: 120, maxBackoffSeconds: 120,
 }, async () => {
   await build({ asOf: isoDate(Date.now() + 10 * 60 * 1000), manual: false });
