@@ -4,7 +4,7 @@
 // Requirements doc: Data sources.
 
 import { createHash } from 'node:crypto';
-import { TZ, parseOpenMeteo, parseOpenMeteoCurrent, parseNws, parseAirQuality, parseAirCurrent, zonedTime, parseEnphaseDaily, parseSoc, energySummary, addDays, dayShort, monthDay } from '../shared/week.js';
+import { TZ, parseOpenMeteo, parseOpenMeteoCurrent, parseNws, parseAirQuality, parseAirCurrent, parseAirNow, zonedTime, parseEnphaseDaily, parseSoc, energySummary, addDays, dayShort, monthDay } from '../shared/week.js';
 
 // ---------------------------------------------------------------------------
 // Google Calendar
@@ -155,6 +155,28 @@ export async function weekAir({ lat, lon }, week, asOf, previous, fetch) {
     if (v != null) out[date] = v;
   }
   return { air: out, current, warnings };
+}
+
+// AirNow (EPA): the official current AQI from nearby monitors, for the header.
+// The AIRNOW secret holds the free API key; empty or "off" skips it, and the
+// header then uses Open-Meteo's modelled AQI. AirNow allows 500 calls an hour;
+// this makes one per build.
+export async function airNowCurrent(apiKey, { lat, lon }, fetch, now = Date.now()) {
+  const key = String(apiKey || '').trim();
+  if (!key || /^(\{\s*\}|off|none)$/i.test(key)) return { current: null, warnings: [] };
+  try {
+    const q = new URLSearchParams({
+      format: 'application/json', latitude: String(lat), longitude: String(lon), distance: '25', API_KEY: key,
+    });
+    const res = await fetch(`https://www.airnowapi.org/aq/observation/latLong/current/?${q}`, { headers: { 'User-Agent': UA } });
+    if (!res.ok) throw new Error(`AirNow ${res.status}`);
+    const current = parseAirNow(await res.json(), now);
+    if (!current) throw new Error('AirNow: no recent reading');
+    return { current, warnings: [] };
+  } catch (e) {
+    console.warn('AirNow failed', e.message);
+    return { current: null, warnings: [] }; // Open-Meteo's AQI stands in
+  }
 }
 
 // ---------------------------------------------------------------------------

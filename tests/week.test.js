@@ -5,7 +5,7 @@ import {
   isoDate, startOfDay, windowOf, rangeTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
-  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent,
+  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow,
 } from '../public/lib/week.js';
 import { weekHtml, einkDocument, esc, plainText, energyHtml } from '../public/lib/view.js';
 import { sampleEnergy, sampleSnapshot } from './fixtures.js';
@@ -526,4 +526,17 @@ test('the header shows conditions now, else today\'s forecast', () => {
   const fallback = head(sampleSnapshot({ current: null }));
   assert.match(fallback, /<b>60°<\/b><span class="lo"> \/ 52°/);
   assert.match(fallback, /AQI 64/);
+});
+
+test('AirNow: the highest pollutant AQI, recent readings only', () => {
+  const now = Date.parse('2026-11-10T08:10:00-08:00');
+  const obs = (ParameterName, AQI, HourObserved = 7, DateObserved = '2026-11-10 ') =>
+    ({ DateObserved, HourObserved, LocalTimeZone: 'PST', ReportingArea: 'Oakland', ParameterName, AQI });
+  assert.deepEqual(parseAirNow([obs('O3', 30), obs('PM2.5', 71), obs('PM10', 18)], now),
+    { aqi: 71, area: 'Oakland', at: Date.parse('2026-11-10T07:00:00-08:00') });
+  assert.equal(parseAirNow([obs('PM2.5', 71, 4)], now), null); // over 3 hours old
+  assert.equal(parseAirNow([obs('PM2.5', -1)], now), null);    // no value
+  assert.equal(parseAirNow([obs('O3', 40, 23, '2026-11-09')], now), null);
+  assert.equal(parseAirNow({ error: 'bad key' }, now), null);
+  assert.equal(parseAirNow([], now), null);
 });

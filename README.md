@@ -42,7 +42,9 @@ Firestore, no secrets and no email addresses in the repository.
 - **Weather** for each day: icon, high/low in °F, and rain chance from 20%.
   Every day's weather block is the same height, so the event lists line up.
 - **Now, at the top:** beside the date, the conditions at the last update:
-  temperature, sky (a moon after dark) and the US AQI with a face for its band
+  temperature, sky (a moon after dark) and the US AQI measured by AirNow's
+  nearest monitors (Open-Meteo's forecast AQI if AirNow has no recent reading),
+  with a face for its band
   (smile for Good … mask for Hazardous, a black chip from 101); and to the
   right, the sunset time. The late-night update says "at 11:55 PM" instead of
   "now", since it stays up until 7am. Today's forecast high/low and rain chance
@@ -85,7 +87,13 @@ Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
   it wakes it's told to sleep until just after the next hour, or from midnight
   until 7am. If that refresh's picture isn't ready, it checks back every 15
   minutes (never past the next refresh) for up to 6 hours.
-- **Air quality:** Open-Meteo's air-quality API (CAMS), each day's worst hour.
+- **Air quality:** the header's AQI is AirNow's (EPA) current reading from
+  monitors within 25 miles: the highest of ozone, PM2.5 and PM10, as AirNow
+  reports it. If AirNow fails, its key is off, or its reading is over 3 hours
+  old, Open-Meteo's air-quality forecast (CAMS) stands in, with no warning.
+- **Weather:** Open-Meteo (mainly NOAA's models for the US) for each day's
+  forecast and the current temperature and sky; the National Weather Service
+  if Open-Meteo is down.
 - **Sunset** is calculated from the home's coordinates (within a couple of
   minutes of published times), so it shows even when the weather services
   are down.
@@ -247,6 +255,22 @@ day is just ending, so its home use can be a few minutes short; the 11:55
 build corrects it. The other hourly builds fetch only the battery level, one
 call each, and Refresh now reuses a battery level under 30 minutes old.
 
+#### AirNow (measured air quality)
+
+The functions also expect a secret called `AIRNOW`.
+
+1. Request a free key at
+   [docs.airnowapi.org/account/request](https://docs.airnowapi.org/account/request/).
+   It arrives by email; it's also shown under **Web Services** once you log in.
+2. Store it (paste the key when asked):
+
+   ```sh
+   npx firebase functions:secrets:set AIRNOW
+   ```
+
+To go without, store `off` instead: the header then uses Open-Meteo's
+forecast AQI. AirNow allows 500 calls an hour; this makes one per build.
+
 ### 5. Deploy
 
 ```sh
@@ -392,6 +416,8 @@ npx firebase functions:log --only refreshNow -n 40     # or nightlyBuild, device
 | *"No week has been built yet"* | Normal before the first build: tap Refresh now |
 | An event is missing | Check, in order: is it marked private by you; on the `hide_events` list or a reminder's `hide_events`; declined by everyone on it; on a calendar not in `calendars` or not shared with the connected account |
 | Deploy: *"Secret ENPHASE … not found"* | Step 4 was skipped: run `npm run connect-enphase`, or store `{}` to go without |
+| Deploy: *"Secret AIRNOW … not found"* | Step 4's AirNow part was skipped: `npx firebase functions:secrets:set AIRNOW` with your key, or `off` |
+| The AQI differs from AirNow's website | Hover over the AQI on the web page: "(AirNow, …)" means it's AirNow's reading for that area, from the hour before the update. No "(AirNow)" means AirNow had nothing recent and Open-Meteo's forecast was used. `npx firebase functions:log --only nightlyBuild` shows "AirNow failed" with the reason (a 401 means the key is wrong) |
 | Warning *"Enphase access expired"* | Run `npm run connect-enphase`, then `npm run deploy` |
 | Warning *"Solar data unavailable"* | Enphase didn't answer; the strip shows the last figures, marked "earlier". `npx firebase functions:log --only nightlyBuild` shows which call failed (a 401/403 means an Access Control box is missing from the Enphase app) |
 | A change in `config/household` doesn't show | It applies at the next hourly build (at :55), or tap Refresh now |
@@ -424,7 +450,7 @@ installed Chrome to use it for the browser test and for rendering locally.
 
 - **No secrets in this repository.** The Google client secret and refresh
   token live in Secret Manager (`npm run connect-google`), and so do the
-  Enphase app keys (`npm run connect-enphase`). Enphase's rotating tokens are
+  Enphase app keys (`npm run connect-enphase`) and the AirNow key. Enphase's rotating tokens are
   in Firestore under `private/`, which no browser can read.
 - **No email addresses in this repository.** People, calendars and the
   allowlist live in Firestore and in the git-ignored `household.local.json`.

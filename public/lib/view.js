@@ -182,7 +182,8 @@ function todayHtml(day, mode, snap) {
     const a = aqiInfo(aqiNow);
     const warn = a.aqi >= AQI_WARN ? ' aqi-warn' : '';
     const word = mode === 'web' ? ` <span class="aqi-word">${esc(a.label)}</span>` : '';
-    row(aqiFace(a.level), `<span class="aqi aqi-${a.level}${warn}" title="Air quality: ${esc(a.label)}"><span>AQI ${a.aqi}${word}</span></span>`,
+    const src = cur?.aqi_source === 'airnow' ? ` (AirNow${cur.aqi_area ? `, ${cur.aqi_area}` : ''})` : '';
+    row(aqiFace(a.level), `<span class="aqi aqi-${a.level}${warn}" title="Air quality: ${esc(a.label)}${esc(src)}"><span>AQI ${a.aqi}${word}</span></span>`,
       ` aqi-${a.level}${warn}`);
   }
   const main = rows.length ? `<div class="tw-grid">${rows.join('')}</div>` : '';

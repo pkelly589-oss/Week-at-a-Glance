@@ -525,6 +525,25 @@ export function parseAirCurrent(json) {
   return v != null && Number.isFinite(+v) ? Math.round(+v) : null;
 }
 
+// AirNow current observations → { aqi, area, at } (or null): the highest AQI
+// of the pollutants reported (ozone, PM2.5, PM10), as AirNow states the
+// overall AQI. `at` is the observation hour (ms). Readings older than
+// `maxAgeMs` count as missing.
+export function parseAirNow(list, now = Date.now(), maxAgeMs = 3 * 36e5) {
+  if (!Array.isArray(list)) return null;
+  let best = null;
+  for (const o of list) {
+    const aqi = Number(o?.AQI);
+    const date = String(o?.DateObserved || '').trim();
+    const hour = Number(o?.HourObserved);
+    if (!Number.isFinite(aqi) || aqi < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(hour)) continue;
+    const at = zonedTime(date, hour);
+    if (now - at > maxAgeMs) continue;
+    if (!best || aqi > best.aqi) best = { aqi: Math.round(aqi), area: o.ReportingArea || null, at };
+  }
+  return best;
+}
+
 // NWS /forecast periods (day and night halves) → the same shape.
 export function parseNws(json) {
   const out = {};

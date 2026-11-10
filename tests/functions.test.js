@@ -54,12 +54,22 @@ const NWS_FORECAST = { properties: { periods: [
 ] } };
 
 // A fake network. Options turn individual services off.
-function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false, airDown = false, enphaseDown = false, enphaseExpired = false } = {}) {
+function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false, airDown = false, enphaseDown = false, enphaseExpired = false, airNowDown = false, airNowOld = false } = {}) {
   const cals = Object.fromEntries(calendarSources().map((c) => [c.id, c.events]));
   const calls = [];
   const fn = async (url, init = {}) => {
     calls.push(String(url));
     const u = new URL(url);
+    if (u.host === 'www.airnowapi.org') {
+      assert.equal(u.pathname, '/aq/observation/latLong/current/');
+      assert.equal(u.searchParams.get('API_KEY'), 'an-key');
+      if (airNowDown) return json({ message: 'down' }, 503);
+      const hour = airNowOld ? 18 : 23;
+      return json([
+        { DateObserved: '2026-11-09 ', HourObserved: hour, LocalTimeZone: 'PST', ReportingArea: 'Oakland', ParameterName: 'O3', AQI: 21, Category: { Number: 1, Name: 'Good' } },
+        { DateObserved: '2026-11-09 ', HourObserved: hour, LocalTimeZone: 'PST', ReportingArea: 'Oakland', ParameterName: 'PM2.5', AQI: 58, Category: { Number: 2, Name: 'Moderate' } },
+      ]);
+    }
     if (u.host === 'api.enphaseenergy.com') {
       if (u.pathname === '/oauth/token') {
         fn.enphaseRefreshes.push(u.searchParams.get('refresh_token'));
@@ -91,7 +101,7 @@ function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false,
 }
 
 const ENPHASE_SECRET = JSON.stringify({ api_key: 'en-key', client_id: 'en-id', client_secret: 'en-secret', refresh_token: 'en-first', system_id: 42 });
-const SECRETS = { clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh', enphase: ENPHASE_SECRET };
+const SECRETS = { clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh', enphase: ENPHASE_SECRET, airnow: 'an-key' };
 const NOW = Date.parse('2026-11-09T23:55:00-08:00');
 const render = async () => Buffer.from('PNG');
 
@@ -307,11 +317,24 @@ test('air quality down: earlier values are kept, with a warning only if today ha
   assert.deepEqual(fresh.warnings, ['Air quality unavailable']);
 });
 
-test('the header gets the conditions at build time: temperature, sky and AQI now', async () => {
+test('the header gets the conditions at build time: temperature and sky (Open-Meteo), AQI (AirNow)', async () => {
   const week = await build();
-  assert.deepEqual(week.current, { temp: 53, icon: 'moon', label: 'Clear', at: '2026-11-09T23:45', aqi: 33 });
+  assert.deepEqual(week.current, { temp: 53, icon: 'moon', label: 'Clear', at: '2026-11-09T23:45',
+    aqi: 58, aqi_source: 'airnow', aqi_area: 'Oakland' }); // the worst pollutant, PM2.5
+  // AirNow down, or its reading over 3 hours old: Open-Meteo's modelled AQI, no warning.
+  for (const opts of [{ airNowDown: true }, { airNowOld: true }]) {
+    const snap = await build({ fetch: fakeFetch(opts) });
+    assert.equal(snap.current.aqi, 33);
+    assert.equal(snap.current.aqi_source, 'open-meteo');
+    assert.deepEqual(snap.warnings, []);
+  }
+  // AirNow switched off: no call made.
+  const off = fakeFetch();
+  assert.equal((await build({ fetch: off, secrets: { ...SECRETS, airnow: 'off' } })).current.aqi, 33);
+  assert.equal(off.calls.filter((c) => c.includes('airnowapi')).length, 0);
+  // No sky either: just the AQI, and the header shows today's forecast.
   const noSky = await build({ fetch: fakeFetch({ openMeteoDown: true }), now: NOW + 36e5 });
-  assert.deepEqual(noSky.current, { aqi: 33 }); // the header falls back to today's forecast
+  assert.deepEqual(noSky.current, { aqi: 58, aqi_source: 'airnow', aqi_area: 'Oakland' });
 });
 
 // ---- home energy (Enphase) -------------------------------------------------

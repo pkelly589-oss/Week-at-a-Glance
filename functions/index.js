@@ -35,12 +35,15 @@ const GOOGLE_REFRESH_TOKEN = defineSecret('GOOGLE_REFRESH_TOKEN');
 // Enphase (solar and battery): one JSON secret from `npm run connect-enphase`,
 // or "{}" to leave energy off.
 const ENPHASE = defineSecret('ENPHASE');
-const SECRETS = [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, ENPHASE];
+// AirNow (EPA) API key for the measured AQI, or "off" to use Open-Meteo's.
+const AIRNOW = defineSecret('AIRNOW');
+const SECRETS = [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, ENPHASE, AIRNOW];
 const secretValues = () => ({
   clientId: GOOGLE_CLIENT_ID.value(),
   clientSecret: GOOGLE_CLIENT_SECRET.value(),
   refreshToken: GOOGLE_REFRESH_TOKEN.value(),
   enphase: ENPHASE.value(),
+  airnow: AIRNOW.value(),
 });
 
 // Rendering runs headless Chrome, which needs the extra memory.

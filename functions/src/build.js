@@ -18,7 +18,7 @@
 import { randomBytes } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { windowOf, buildEvents, buildSnapshot, addDays, isHolidayCalendar, isReminderCalendar } from '../shared/week.js';
-import { googleAccessToken, listEvents, weekWeather, weekAir, homeEnergy, enphaseConfig, GoogleAuthError } from './sources.js';
+import { googleAccessToken, listEvents, weekWeather, weekAir, airNowCurrent, homeEnergy, enphaseConfig, GoogleAuthError } from './sources.js';
 
 export const KEEP_DAYS = 14;
 
@@ -72,6 +72,18 @@ async function readCalendars(household, week, secrets, fetch) {
   return { events: buildEvents(sources, household.people, opts), warnings };
 }
 
+// The header's "now": Open-Meteo's temperature and sky, with AirNow's
+// measured AQI (or Open-Meteo's modelled AQI when AirNow has none).
+function currentConditions(sky, airNow, modelAqi) {
+  const aqi = airNow?.aqi ?? modelAqi ?? null;
+  if (!sky && aqi == null) return null;
+  return {
+    ...(sky || {}), aqi,
+    aqi_source: airNow ? 'airnow' : aqi != null ? 'open-meteo' : null,
+    ...(airNow ? { aqi_area: airNow.area } : {}),
+  };
+}
+
 export async function runBuild({ db, bucket, fetch, secrets, now = Date.now(), asOf, render, manual = false }) {
   const household = await loadHousehold(db);
   const week = windowOf(asOf);
@@ -96,9 +108,10 @@ export async function runBuild({ db, bucket, fetch, secrets, now = Date.now(), a
   const cal = await readCalendars(household, week, secrets, fetch);
   let enphase = null, energyWarnings = [];
   try { enphase = enphaseConfig(secrets.enphase); } catch (e) { energyWarnings = [e.message]; }
-  const [wx, aq, en] = await Promise.all([
+  const [wx, aq, airNow, en] = await Promise.all([
     weekWeather(household.location, week, asOf, previousWeather, fetch),
     weekAir(household.location, week, asOf, previousAir, fetch),
+    airNowCurrent(secrets.airnow, household.location, fetch, now),
     homeEnergy(enphase, db, asOf, previousEnergy, fetch, now),
   ]);
   const snapshot = buildSnapshot({
@@ -106,7 +119,7 @@ export async function runBuild({ db, bucket, fetch, secrets, now = Date.now(), a
     reminders: household.reminders || [],
     location: household.location,
     energy: en.energy,
-    current: wx.current || aq.current != null ? { ...(wx.current || {}), aqi: aq.current } : null,
+    current: currentConditions(wx.current, airNow.current, aq.current),
     warnings: [...cal.warnings, ...wx.warnings, ...aq.warnings, ...energyWarnings, ...en.warnings],
   });
   await weekRef.set(snapshot);
