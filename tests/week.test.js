@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isoDate, startOfDay, weekOf, weekTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
+  isoDate, startOfDay, windowOf, rangeTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
 } from '../public/lib/week.js';
@@ -24,15 +24,18 @@ const ev = (o = {}) => ({
 const att = (email, responseStatus, extra = {}) => ({ email, responseStatus, ...extra });
 const titles = (events) => events.map((e) => e.title);
 
-test('the week runs Sunday to Saturday in Pacific time', () => {
-  const w = weekOf('2026-11-09'); // a Monday
-  assert.equal(w.sunday, '2026-11-08');
-  assert.equal(w.saturday, '2026-11-14');
-  assert.equal(weekOf('2026-11-14').sunday, '2026-11-08'); // Saturday stays in its own week
-  assert.equal(weekOf('2026-11-15').sunday, '2026-11-15'); // Sunday starts the next
-  assert.equal(new Date(w.timeMin).toISOString(), '2026-11-08T08:00:00.000Z');
-  assert.equal(weekTitle('2026-11-08'), 'Week of Nov 8 – 14');
-  assert.equal(weekTitle('2026-11-29'), 'Week of Nov 29 – Dec 5');
+test('the window is yesterday, today and the next five days, in Pacific time', () => {
+  const w = windowOf('2026-11-10'); // a Tuesday
+  assert.equal(w.start, '2026-11-09');
+  assert.equal(w.end, '2026-11-15');
+  assert.equal(w.dates.length, 7);
+  assert.equal(w.dates[1], '2026-11-10'); // today is always second
+  assert.equal(windowOf('2026-11-14').start, '2026-11-13'); // Saturday: no longer mostly past
+  assert.equal(windowOf('2026-11-30').end, '2026-12-05');   // across a month
+  assert.equal(new Date(w.timeMin).toISOString(), '2026-11-09T08:00:00.000Z');
+  assert.equal(new Date(w.timeMax).toISOString(), '2026-11-16T08:00:00.000Z');
+  assert.equal(rangeTitle('2026-11-09', '2026-11-15'), 'Nov 9 – 15');
+  assert.equal(rangeTitle('2026-11-29', '2026-12-05'), 'Nov 29 – Dec 5');
 });
 
 test('dates and midnights survive daylight saving changes', () => {
@@ -136,7 +139,7 @@ test("the organizer's copy wins, and blanks are filled from the other", () => {
 });
 
 test('days list all-day events first, then by start time', () => {
-  const week = weekOf('2026-11-09');
+  const week = windowOf('2026-11-09');
   const events = buildEvents([{ person: 'pete', events: [
     ev({ summary: 'Late', start: { dateTime: '2026-11-10T18:00:00-08:00' }, end: { dateTime: '2026-11-10T19:00:00-08:00' } }),
     ev({ summary: 'Early', start: { dateTime: '2026-11-10T07:00:00-08:00' }, end: { dateTime: '2026-11-10T08:00:00-08:00' } }),
@@ -154,7 +157,7 @@ test('multi-day events repeat on each day; late nights do not spill over', () =>
   const conf = { allDay: false, start: Date.parse('2026-11-12T09:00:00-08:00'), end: Date.parse('2026-11-13T17:00:00-08:00') };
   assert.deepEqual(eventDates(conf), ['2026-11-12', '2026-11-13']);
   // A trip that runs into next week shows only its in-week days, still numbered.
-  const week = weekOf('2026-11-09');
+  const week = windowOf('2026-11-09');
   const days = layoutWeek([{ title: 'Tahoe', location: null, badges: ['P'], allDay: true, start: '2026-11-14', end: '2026-11-17' }], week);
   assert.deepEqual(days['2026-11-14'][0].span, { n: 1, of: 3 });
   const confDays = layoutWeek([{ title: 'Summit', location: null, badges: [], ...conf }], week);
@@ -183,7 +186,7 @@ test('weather: Open-Meteo and NWS parse to the same shape', () => {
 });
 
 test('the markup escapes calendar text and marks today and past days', () => {
-  const week = weekOf('2026-11-10');
+  const week = windowOf('2026-11-10');
   const snap = buildSnapshot({
     asOf: '2026-11-10', builtAt: Date.parse('2026-11-09T23:55:00-08:00'), week,
     events: [{ title: '<img src=x onerror=alert(1)>', location: '"Home"', badges: ['P', 'D'], allDay: false,
@@ -194,11 +197,14 @@ test('the markup escapes calendar text and marks today and past days', () => {
   assert.ok(!html.includes('<img'));
   assert.ok(html.includes('&lt;img src=x'));
   assert.ok(html.includes('class="day today" data-date="2026-11-10"'));
-  assert.ok(html.includes('class="day past" data-date="2026-11-08"'));
+  assert.ok(html.includes('class="day past" data-date="2026-11-09"'));
+  assert.equal((html.match(/class="day past"/g) || []).length, 1, 'only yesterday is past');
   assert.ok(html.includes('Updated Mon 11:55 PM'));
   assert.ok(html.includes('70%'));
   assert.ok(html.includes('&quot;Home&quot;'), 'locations show, escaped');
-  assert.ok(einkDocument(snap).includes('<span class="wk-of">Week of</span><span class="wk-range">Nov 8 – 14</span>'));
+  assert.ok(einkDocument(snap).includes('<span class="wk-of">Mon – Sun</span><span class="wk-range">Nov 9 – 15</span>'));
+  // A snapshot built before the change still shows its old title, split.
+  assert.ok(weekHtml({ ...snap, title: 'Week of Nov 8 – 14', subtitle: undefined }).includes('<span class="wk-of">Week of</span><span class="wk-range">Nov 8 – 14</span>'));
   assert.equal(esc(`a&'`), 'a&amp;&#39;');
 });
 
@@ -247,7 +253,7 @@ test('air quality: daily worst hour, shown every day it is known', () => {
 });
 
 test('holidays come first in their day, without badges', () => {
-  const week = weekOf('2026-11-09');
+  const week = windowOf('2026-11-09');
   const events = buildEvents([
     { person: 'pete', events: [
       ev({ summary: 'Early run', start: { dateTime: '2026-11-11T06:00:00-08:00' }, end: { dateTime: '2026-11-11T07:00:00-08:00' } }),
@@ -277,7 +283,7 @@ test('sunset in Oakland, computed locally, across the clock changes', () => {
 });
 
 test("the header shows today's weather, air quality and sunset", () => {
-  const week = weekOf('2026-11-10');
+  const week = windowOf('2026-11-10');
   const snap = buildSnapshot({ asOf: '2026-11-10', builtAt: 0, week, events: [],
     weather: { '2026-11-10': { icon: 'rain', label: 'Rain', hi: 58, lo: 50, rain: 70 } },
     air: { '2026-11-10': 42 }, location: { lat: 37.8044, lon: -122.2712 } });
@@ -306,7 +312,7 @@ test('hide_events: whole words, any case, apostrophes ignored', () => {
 });
 
 test('a reminder calendar (Home Tasks) shows as reminder bars, after holidays', () => {
-  const week = weekOf('2026-11-09');
+  const week = windowOf('2026-11-09');
   const events = buildEvents([
     { person: 'pete', events: [ev({ summary: 'Haircut', start: { dateTime: '2026-11-11T10:00:00-08:00' }, end: { dateTime: '2026-11-11T11:00:00-08:00' } })] },
     { person: null, reminder: true, events: [
@@ -330,7 +336,7 @@ test('a reminder calendar (Home Tasks) shows as reminder bars, after holidays', 
 });
 
 test('the AQI carries a face for its band', () => {
-  const week = weekOf('2026-11-10');
+  const week = windowOf('2026-11-10');
   const head = (aqi) => weekHtml(buildSnapshot({ asOf: '2026-11-10', builtAt: 0, week, events: [], weather: {},
     air: { '2026-11-10': aqi } }), { mode: 'eink' }).split('<div class="week">')[0];
   const faceOf = (html) => (html.match(/<span class="aqi aqi-(\w+)/) || [])[1];
@@ -379,7 +385,7 @@ test('locations show the place name only, never the address', () => {
 test('emoji are dropped from titles on the e-ink only', () => {
   assert.equal(plainText('💍Anniversary'), 'Anniversary');
   assert.equal(plainText('Party 🎉 time'), 'Party time');
-  const week = weekOf('2026-11-08');
+  const week = windowOf('2026-11-08');
   const snap = buildSnapshot({ asOf: '2026-11-08', builtAt: 0, week, weather: {},
     events: [{ title: '💍Anniversary', location: null, badges: [], allDay: true, start: '2026-11-08', end: '2026-11-09' }] });
   assert.match(weekHtml(snap, { mode: 'eink' }), /<span class="title">Anniversary<\/span>/);
@@ -431,7 +437,7 @@ test('birthdays get their own look; plans around birthdays stay events', () => {
   assert.equal(isBirthdayEvent({ summary: "Mom's birthday call", start: { dateTime: '2026-11-08T16:00:00-08:00' } }), false);
   assert.equal(isBirthdayEvent({ summary: 'Sam', eventType: 'birthday', ...day() }), true);
 
-  const week = weekOf('2026-11-09');
+  const week = windowOf('2026-11-09');
   const events = buildEvents([
     { person: 'pete', events: [ev({ summary: 'Lisa’s Birthday', ...day() }), ev({ summary: 'Dentist', start: { dateTime: '2026-11-12T09:00:00-08:00' }, end: { dateTime: '2026-11-12T10:00:00-08:00' } })] },
     { person: null, holiday: true, events: [ev({ summary: 'Some Holiday', ...day() })] },

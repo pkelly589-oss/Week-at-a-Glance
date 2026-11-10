@@ -23,7 +23,7 @@ import {
   getFunctions, connectFunctionsEmulator, httpsCallable,
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js';
 import { FIREBASE_CONFIG, EMULATOR_CONFIG } from './firebase-config.js';
-import { isoDate, stampLabel, weekOf } from './lib/week.js';
+import { isoDate, stampLabel, windowOf } from './lib/week.js';
 import { weekHtml, esc } from './lib/view.js';
 
 // ---------------------------------------------------------------------------
@@ -184,8 +184,8 @@ function renderBanners() {
   if (st?.google_disconnected) {
     out.push(['warn', 'Google needs reconnecting: run <code>npm run connect-google</code> on your computer.']);
   }
-  if (state.week && weekOf(today).id !== state.week.week_id) {
-    out.push(['warn', `This is the week of ${esc(state.week.title.replace('Week of ', ''))}; this week's hasn't been built yet.`]);
+  if (state.week && windowOf(today).id !== state.week.week_id && state.week.as_of < today) {
+    out.push(['warn', `This shows ${esc(state.week.title.replace('Week of ', ''))}, built for an earlier day; today's hasn't been built yet.`]);
   }
   if (dev?.battery_pct != null && dev.battery_pct < LOW_BATTERY_PCT) {
     out.push(['warn', `The door display's battery is at about ${esc(dev.battery_pct)}%. Time to charge it.`]);

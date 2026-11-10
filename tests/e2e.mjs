@@ -64,12 +64,13 @@ await page.waitForSelector('#view-signin:not([hidden])');
 // 2. The household sees the week, today marked, past days folded.
 await signIn(page, MEMBER);
 await page.waitForSelector('.day.today');
-assert.equal(await page.textContent('.week-head .wk-of'), 'Week of');
-assert.equal(await page.textContent('.week-head .wk-range'), 'Nov 8 – 14');
+assert.equal(await page.textContent('.week-head .wk-of'), 'Mon – Sun');
+assert.equal(await page.textContent('.week-head .wk-range'), 'Nov 9 – 15');
 assert.equal(await page.getAttribute('.day.today', 'data-date'), '2026-11-10');
-assert.equal(await page.locator('.day.past').count(), 2);
+assert.equal(await page.locator('.day.past').count(), 1); // only yesterday
+assert.equal(await page.locator('.day').count(), 7);
 assert.equal(await page.locator('.past-fold[open]').count(), 0);
-assert.match(await page.textContent('.day[data-date="2026-11-08"] summary'), /2 events/);
+assert.match(await page.textContent('.day[data-date="2026-11-09"] summary'), /\d+ events/);
 const tueTitles = await page.locator('.day.today .title').allTextContents();
 assert.ok(tueTitles.includes('Dinner at Nido with Sam & Ari'));
 assert.ok(!tueTitles.includes('Physical therapy'), 'private events stay hidden');
@@ -88,7 +89,7 @@ await shot(page, 'web-2-phone-viewport', false);
 
 // 5. Desktop: seven columns, past days open.
 await page.setViewportSize({ width: 1440, height: 1000 });
-await page.waitForFunction(() => document.querySelectorAll('.past-fold[open]').length === 2);
+await page.waitForFunction(() => document.querySelectorAll('.past-fold[open]').length === 1);
 const cols = await page.evaluate(() => getComputedStyle(document.querySelector('.week')).gridTemplateColumns.split(' ').length);
 const wxHeights = await page.evaluate(() => [...document.querySelectorAll('.day .wx')].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().height));
 assert.equal(new Set(wxHeights).size, 1, `weather boxes differ: ${wxHeights}`);

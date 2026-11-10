@@ -6,7 +6,7 @@
 //
 // Firestore layout (all written only by the functions):
 //   config/household   who's who and which calendars to read (set by hand, see README)
-//   weeks/{sunday}     the snapshot for that week          — members can read
+//   weeks/{first day}  the snapshot for that 7-day window  — members can read
 //   status/latest      last build's outcome and image name — members can read
 //   status/device      the TRMNL's last check-in           — members can read
 //   renders/{name}     where each PNG is stored + its URL token (functions only)
@@ -14,7 +14,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
-import { weekOf, buildEvents, buildSnapshot, addDays, isHolidayCalendar, isReminderCalendar } from '../shared/week.js';
+import { windowOf, buildEvents, buildSnapshot, addDays, isHolidayCalendar, isReminderCalendar } from '../shared/week.js';
 import { googleAccessToken, listEvents, weekWeather, weekAir, GoogleAuthError } from './sources.js';
 
 export const KEEP_DAYS = 14;
@@ -71,14 +71,20 @@ async function readCalendars(household, week, secrets, fetch) {
 
 export async function runBuild({ db, bucket, fetch, secrets, now = Date.now(), asOf, render, manual = false }) {
   const household = await loadHousehold(db);
-  const week = weekOf(asOf);
+  const week = windowOf(asOf);
   const weekRef = db.doc(`weeks/${week.id}`);
   const statusRef = db.doc('status/latest');
 
-  const previous = (await weekRef.get()).data();
-  const previousWeather = Object.fromEntries((previous?.days || [])
+  // Earlier forecasts for these dates, for when a weather service is down:
+  // from the last build (yesterday's window shares six of the seven days) and
+  // from any earlier build of this same window.
+  const lastId = (await statusRef.get()).data()?.week_id;
+  const earlier = await Promise.all([...new Set([lastId, week.id].filter(Boolean))]
+    .map(async (id) => (await db.doc(`weeks/${id}`).get()).data()));
+  const previousDays = earlier.flatMap((snap) => snap?.days || []);
+  const previousWeather = Object.fromEntries(previousDays
     .filter((d) => d.weather).map((d) => [d.date, d.weather]));
-  const previousAir = Object.fromEntries((previous?.days || [])
+  const previousAir = Object.fromEntries(previousDays
     .filter((d) => d.aqi != null).map((d) => [d.date, d.aqi]));
 
   const cal = await readCalendars(household, week, secrets, fetch);

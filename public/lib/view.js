@@ -181,17 +181,20 @@ function todayHtml(day, mode) {
   return `<div class="today-wx">${main}${sunset}</div>`;
 }
 
-// "Week of Nov 8 – 14" on two lines: "Week of", then the dates.
-function titleHtml(title) {
-  const m = String(title || '').match(/^(Week of)\s+(.*)$/);
-  return m ? `<span class="wk-of">${esc(m[1])}</span><span class="wk-range">${esc(m[2])}</span>` : esc(title);
+// The title on two lines: the weekdays shown ("Mon – Sun"), then the dates
+// ("Nov 9 – 15"). Snapshots built before the rolling window carry
+// "Week of Nov 8 – 14" instead, split the same way.
+function titleHtml(snap) {
+  const old = String(snap.title || '').match(/^(Week of)\s+(.*)$/);
+  const [top, range] = old ? [old[1], old[2]] : [snap.subtitle, snap.title];
+  return top ? `<span class="wk-of">${esc(top)}</span><span class="wk-range">${esc(range)}</span>` : esc(range);
 }
 
-// The whole week: header + seven days.
+// The whole window: header + seven days.
 export function weekHtml(snap, { mode = 'web', today = snap.as_of } = {}) {
   const warn = (snap.warnings || []).length
     ? `<p class="warnings">${snap.warnings.map(esc).join(' · ')}</p>` : '';
-  return `<header class="week-head"><div><h1>${titleHtml(snap.title)}</h1>${warn}</div>` +
+  return `<header class="week-head"><div><h1>${titleHtml(snap)}</h1>${warn}</div>` +
     `<div class="head-right">` +
     todayHtml(snap.days.find((d) => d.date === today), mode) +
     `<span class="updated">Updated ${esc(stampLabel(snap.built_at))}</span></div></header>` +

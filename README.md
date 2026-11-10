@@ -1,6 +1,7 @@
 # Week at a Glance
 
-The household's Sunday–Saturday week on one screen: both Google Calendars
+The household's next week on one screen (yesterday, today and the five days
+after): both Google Calendars
 merged into a plain list per day, with the weather for each day. It is shown
 on a TRMNL X e-ink display by the front door, refreshed twice a day (midnight
 and noon), and on a web page for phones and computers.
@@ -13,7 +14,10 @@ Firestore, no secrets and no email addresses in the repository.
 
 - **Your calendars, plus shared ones:** both of yours, Home Tasks, the house
   calendar and US holidays (set in step 5).
-- **One list per day, Sunday to Saturday.** No hour grid. In each day:
+- **Seven days: yesterday, today and the next five**, so today is always the
+  second column and the view never runs out at the weekend. The header shows
+  the weekdays and dates on view ("Mon – Sun" / "Nov 9 – 15").
+- **One list per day.** No hour grid. In each day:
   holidays first (outlined, with a star), then birthdays (dashed outline, with
   a cake), then reminders, then all-day events,
   then timed events by start time. Multi-day events repeat on each day with
@@ -43,9 +47,9 @@ Firestore, no secrets and no email addresses in the repository.
 - **Household reminders** as black bars at the top of the day: fixed routines
   such as "Bins out tonight" or "Street sweeping today" (their calendar copies
   are hidden), and everything on a calendar marked `as_reminders` (Home Tasks).
-- **E-ink:** today's column is inverted, past days are greyed, a crowded day
+- **E-ink:** today's column is inverted, yesterday is greyed, a crowded day
   ends with "+3 more", and emoji are dropped (the display has no emoji font).
-- **Web page:** stacked days on a phone (opens at today, past days folded),
+- **Web page:** stacked days on a phone (opens at today, yesterday folded),
   seven columns on a computer, coloured badges, light/dark, add to home screen.
 - **Banners** on the web page for a failed update, a Google connection that
   needs renewing, a display battery under 20%, a display that hasn't checked
@@ -56,14 +60,14 @@ Firestore, no secrets and no email addresses in the repository.
 
 ```
 Pete's calendar ──┐
-David's calendar ─┼─► nightlyBuild (11:55, 23:55 PT) ──► weeks/{sunday} ──► web page
+David's calendar ─┼─► nightlyBuild (11:55, 23:55 PT) ──► weeks/{first day} ──► web page
 Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
                                    │
                                          └─► Storage PNG ──► /api/display ──► TRMNL X (wakes 00:00, 12:00)
 ```
 
 - **nightlyBuild** runs at 11:55 and 23:55 Pacific; the 23:55 run builds for
-  the day about to begin (Saturday night builds next week). It retries 3 times,
+  the day about to begin, so the window moves on by a day at midnight. It retries 3 times,
   2 minutes apart. If it can't read any calendar, the display keeps its last picture.
 - **The e-ink image** is the same markup as the web page (`public/lib/view.js`),
   drawn by headless Chrome at 1872 × 1404 and reduced to 16 greys (about 55 KB).
@@ -83,7 +87,7 @@ Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
 
 | Path | What it is |
 | --- | --- |
-| `public/lib/week.js` | Week rules: Pacific dates, Sunday–Saturday window, merge/dedup, RSVP badges, hiding rules, multi-day layout, weather parsing. No Firebase code, so it's unit-tested and shared |
+| `public/lib/week.js` | Week rules: Pacific dates, the 7-day window, merge/dedup, RSVP badges, hiding rules, multi-day layout, weather parsing. No Firebase code, so it's unit-tested and shared |
 | `public/lib/view.js` | The week's markup for both the web page and the e-ink image, plus the e-ink styles |
 | `public/index.html`, `app.js`, `style.css` | The web page: sign-in, live data, banners, Refresh now |
 | `public/firebase-config.js` | The project's public Firebase web settings, and the emulator stand-ins |
@@ -108,7 +112,7 @@ All written by the functions; browsers only read `weeks` and `status`.
 | --- | --- |
 | `allowlist/{email}` | `role`: `owner` or `member` (as in Fridge Board) |
 | `config/household` | Who's who, which calendars, and the home's coordinates (step 5) |
-| `weeks/{sunday}` | The week snapshot: title, `as_of`, `built_at`, `warnings`, and `days[]` with weather and events |
+| `weeks/{first day}` | The snapshot for a 7-day window: `title` ("Nov 9 – 15"), `subtitle` ("Mon – Sun"), `as_of` (today), `built_at`, `warnings`, and `days[]` with weather and events |
 | `status/latest` | Last build: `ok`, `week_id`, `image`, `last_error`, `consecutive_failures` |
 | `status/device` | The display's last check-in, battery, and any device waiting for approval |
 | `devices/{MAC}` | An approved display and its API key |

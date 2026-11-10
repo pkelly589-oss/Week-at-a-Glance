@@ -65,13 +65,13 @@ export async function listEvents(calendarId, { timeMin, timeMax }, token, fetch)
 
 const UA = 'week-at-a-glance home display';
 
-// Open-Meteo, the whole Sunday–Saturday week in one call (past days included).
+// Open-Meteo, all seven days in one call (yesterday included).
 export async function openMeteo({ lat, lon }, week, fetch) {
   const q = new URLSearchParams({
     latitude: String(lat), longitude: String(lon),
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
     temperature_unit: 'fahrenheit', timezone: TZ,
-    start_date: week.sunday, end_date: week.saturday,
+    start_date: week.start, end_date: week.end,
   });
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { headers: { 'User-Agent': UA } });
   const body = await res.json().catch(() => null);
@@ -133,7 +133,7 @@ export async function weekAir({ lat, lon }, week, asOf, previous, fetch) {
   try {
     const q = new URLSearchParams({
       latitude: String(lat), longitude: String(lon), hourly: 'us_aqi', timezone: TZ,
-      start_date: week.sunday, end_date: week.saturday,
+      start_date: week.start, end_date: week.end,
     });
     const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}`, { headers: { 'User-Agent': UA } });
     const body = await res.json().catch(() => null);

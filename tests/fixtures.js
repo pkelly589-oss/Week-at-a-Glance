@@ -1,6 +1,6 @@
 // A believable week of Google Calendar data for tests, local development and
 // screenshots. Invented people and events only (no household data).
-import { weekOf, buildEvents, buildSnapshot } from '../public/lib/week.js';
+import { windowOf, buildEvents, buildSnapshot } from '../public/lib/week.js';
 
 export const PETE = 'pete@example.com';
 export const DAVID = 'david@example.com';
@@ -40,7 +40,7 @@ const both = (s1 = 'accepted', s2 = 'accepted') => ({ organizer: { email: PETE }
 let n = 0;
 const e = (summary, when, extra = {}) => ({ id: `f${++n}`, iCalUID: `fixture-${n}@example.com`, status: 'confirmed', summary, ...when, ...extra });
 
-// Week of Sun Nov 8 – Sat Nov 14, 2026.
+// Events around Sun Nov 8 – Sun Nov 15, 2026 (the sample window is Mon Nov 9 – Sun Nov 15).
 export function calendarSources() {
   n = 0;
   const shared = [
@@ -105,12 +105,13 @@ export const WEATHER = {
   '2026-11-12': { icon: 'drizzle', label: 'Drizzle', hi: 58, lo: 49, rain: 40 },
   '2026-11-13': { icon: 'partly', label: 'Partly cloudy', hi: 61, lo: 47, rain: 10 },
   '2026-11-14': { icon: 'sun', label: 'Sunny', hi: 64, lo: 46, rain: 0 },
+  '2026-11-15': { icon: 'partly', label: 'Partly cloudy', hi: 62, lo: 47, rain: 10 },
 };
 
 export const AIR = { '2026-11-08': 32, '2026-11-09': 48, '2026-11-10': 64, '2026-11-11': 41, '2026-11-12': 118, '2026-11-13': 87 };
 
 export function sampleSnapshot({ asOf = '2026-11-10', builtAt = Date.parse('2026-11-09T23:55:00-08:00'), warnings = [] } = {}) {
-  const week = weekOf(asOf);
+  const week = windowOf(asOf);
   const { hide_locations: hideLocations, reminders, hide_events: hideEvents } = HOUSEHOLD;
   return buildSnapshot({
     asOf, builtAt, week, warnings, weather: WEATHER, air: AIR, reminders, location: HOUSEHOLD.location,

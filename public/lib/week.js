@@ -73,11 +73,10 @@ export const monthDay = (iso) => `${MON[+iso.slice(5, 7) - 1]} ${+iso.slice(8)}`
 export const longDate = (iso) =>
   `${DOW_LONG[weekday(iso)]}, ${MON_LONG[+iso.slice(5, 7) - 1]} ${+iso.slice(8)}`;
 
-// "Week of Nov 8 – 14", or "Week of Nov 29 – Dec 5" across a month boundary.
-export function weekTitle(sunday) {
-  const sat = addDays(sunday, 6);
-  const end = sat.slice(5, 7) === sunday.slice(5, 7) ? String(+sat.slice(8)) : monthDay(sat);
-  return `Week of ${monthDay(sunday)} – ${end}`;
+// The dates shown: "Nov 9 – 15", or "Nov 29 – Dec 5" across a month boundary.
+export function rangeTitle(first, last) {
+  const end = last.slice(5, 7) === first.slice(5, 7) ? String(+last.slice(8)) : monthDay(last);
+  return `${monthDay(first)} – ${end}`;
 }
 
 // "9a", "9:30a", "12p" (E-ink display: start time only, compact).
@@ -122,19 +121,22 @@ export function stampLabel(ms) {
 }
 
 // ---------------------------------------------------------------------------
-// The week window (strictly Sunday to Saturday)
+// The days shown: yesterday, today and the next five
 // ---------------------------------------------------------------------------
+// (requirements: Display > window). Today is always the second of seven.
 
-export function weekOf(iso) {
-  const sunday = addDays(iso, -weekday(iso));
-  const dates = Array.from({ length: 7 }, (_, i) => addDays(sunday, i));
+export const DAYS_BEFORE = 1, DAYS_SHOWN = 7;
+
+export function windowOf(iso) {
+  const start = addDays(iso, -DAYS_BEFORE);
+  const dates = Array.from({ length: DAYS_SHOWN }, (_, i) => addDays(start, i));
   return {
-    id: sunday,
-    sunday,
-    saturday: dates[6],
+    id: start,
+    start,
+    end: dates.at(-1),
     dates,
-    timeMin: startOfDay(sunday),
-    timeMax: startOfDay(addDays(sunday, 7)),
+    timeMin: startOfDay(start),
+    timeMax: startOfDay(addDays(start, DAYS_SHOWN)),
   };
 }
 
@@ -530,7 +532,8 @@ export function buildSnapshot({ asOf, builtAt, week, events, weather, air = {}, 
   const days = layoutWeek(events, week);
   return {
     week_id: week.id,
-    title: weekTitle(week.sunday),
+    title: rangeTitle(week.start, week.end),          // "Nov 9 – 15"
+    subtitle: `${dayShort(week.start)} – ${dayShort(week.end)}`, // "Mon – Sun"
     as_of: asOf,                 // the Pacific date the snapshot is for ("today")
     built_at: builtAt,           // ms
     warnings,
