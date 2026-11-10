@@ -345,6 +345,21 @@ export function placeName(loc) {
   return first;
 }
 
+// Birthdays (requirements: E-ink display > Event rows) get their own look. A
+// birthday is an all-day, one-day event whose title ends in "birthday" or
+// "bday" ("Lisa’s Birthday", "Stevens birthday", "Jameson's Birthday!!"), or
+// one Google marks as a birthday. Plans around a birthday stay normal events:
+// a party is timed, a "Tahoe Weekend for Jake's Birthday" spans several days,
+// "Supper Club (Pete's Birthday Edition)" doesn't end in the word.
+const BIRTHDAY_END = /\b(birthday|b-?day)[\s!.\p{Extended_Pictographic}\u200d\ufe0f]*$/iu;
+export function isBirthdayEvent(ev) {
+  if (/^birthday$/i.test(ev?.eventType || '')) return true;
+  const date = ev?.start?.date;
+  if (!date) return false;
+  const oneDay = !ev.end?.date || ev.end.date === addDays(date, 1);
+  return oneDay && BIRTHDAY_END.test(ev.summary || '');
+}
+
 // Applies the exclusion rules, then works out badges.
 // Returns [{ title, location, allDay, start, end, badges }], where for all-day
 // events start/end are 'YYYY-MM-DD' (end exclusive) and for timed events they
@@ -366,6 +381,7 @@ export function buildEvents(sources, people, { hideLocations = [], reminders = [
     const allDay = !!ev.start?.date;
     const isHoliday = g.copies.some((c) => c.holiday);
     const isReminder = !isHoliday && g.copies.some((c) => c.reminder);
+    const isBirthday = !isHoliday && !isReminder && isBirthdayEvent(ev);
     out.push({
       title: ev.summary.trim(),
       // The first copy whose location names a place ("Ashes & Diamonds
@@ -375,9 +391,10 @@ export function buildEvents(sources, people, { hideLocations = [], reminders = [
       allDay,
       start: allDay ? ev.start.date : Date.parse(ev.start.dateTime),
       end: allDay ? (ev.end?.date || addDays(ev.start.date, 1)) : Date.parse(ev.end?.dateTime || ev.start.dateTime),
-      badges: isHoliday || isReminder ? [] : badges,
+      badges: isHoliday || isReminder || isBirthday ? [] : badges,
       holiday: isHoliday,
       reminder: isReminder,
+      birthday: isBirthday,
     });
   }
   return out;
@@ -417,7 +434,8 @@ export function layoutWeek(events, week) {
         location: ev.location,
         allDay: ev.allDay || !firstDay,
         time: !ev.allDay && firstDay ? shortTime(ev.start) : null,
-        sortMs: ev.holiday ? -3 : ev.reminder ? -2 : ev.allDay || !firstDay ? -1 : ev.start,
+        sortMs: ev.holiday ? -4 : ev.birthday ? -3 : ev.reminder ? -2 : ev.allDay || !firstDay ? -1 : ev.start,
+        birthday: !!ev.birthday,
         holiday: !!ev.holiday,
         reminder: !!ev.reminder,
         badges: ev.badges,

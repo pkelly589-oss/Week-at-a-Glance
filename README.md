@@ -14,13 +14,17 @@ Firestore, no secrets and no email addresses in the repository.
 - **Your calendars, plus shared ones:** both of yours, Home Tasks, the house
   calendar and US holidays (set in step 5).
 - **One list per day, Sunday to Saturday.** No hour grid. In each day:
-  holidays first (outlined, with a star), then reminders, then all-day events,
+  holidays first (outlined, with a star), then birthdays (dashed outline, with
+  a cake), then reminders, then all-day events,
   then timed events by start time. Multi-day events repeat on each day with
   "Day 2 of 3"; a late night that runs past midnight stays on its first day.
 - **Each event once.** Invites you're both on, copies made by hand (same title
   and start), and the same occasion entered by each of you in different words
   ("My Anniversary!!" and "💍Anniversary": same start, one title's words all in
   the other, ignoring "my", "our", emoji and punctuation) become one row.
+- **Birthdays** are all-day, one-day events whose title ends in "birthday" or
+  "bday" ("Lisa’s Birthday"), or that Google marks as birthdays. Parties and
+  trips for a birthday stay normal events.
 - **P / D badges show who's going**, from RSVPs: accepted, maybe, organizer,
   or your own event. Not answered yet = no badge. Holidays and reminders have none.
 - **Hidden:** events everyone of you on the invite has declined (one decline
@@ -347,7 +351,7 @@ Add `allowlist/<email>` with `role` = `owner` in the emulator UI
 ## Tests
 
 ```sh
-npm test            # week rules, the build and device API, security rules (44 tests)
+npm test            # week rules, the build and device API, security rules (45 tests)
 npm run test:e2e    # the web page in a browser, phone and desktop sizes
 ```
 

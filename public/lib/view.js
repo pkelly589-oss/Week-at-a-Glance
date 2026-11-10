@@ -79,6 +79,14 @@ function weatherHtml(w, aqi, mode) {
 
 // Holidays: always the first thing under the weather, above reminders and events.
 const STAR = `<svg class="star" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.9 4.1 4.4.5-3.3 3 .9 4.4L8 11.3l-3.9 2.2.9-4.4-3.3-3 4.4-.5z" fill="currentColor"/></svg>`;
+// Birthdays: after holidays, with a cake.
+const CAKE = `<svg class="cake" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16v-7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2z"/><path d="M4 16.5c1.3 1 2.7 1 4 0s2.7-1 4 0 2.7 1 4 0 2.7-1 4 0"/><path d="M8 12V9M12 12V9M16 12V9"/><path d="M8 6.5c.8-.7.8-1.6 0-2.5-.8.9-.8 1.8 0 2.5zM12 6.5c.8-.7.8-1.6 0-2.5-.8.9-.8 1.8 0 2.5zM16 6.5c.8-.7.8-1.6 0-2.5-.8.9-.8 1.8 0 2.5z" fill="currentColor"/></svg>`;
+function birthdaysHtml(events, mode) {
+  if (!events.length) return '';
+  return `<ul class="birthdays">${events.map((e) =>
+    `<li class="birthday">${CAKE}<span>${esc(mode === 'eink' ? plainText(e.title) : e.title)}</span></li>`).join('')}</ul>`;
+}
+
 function holidaysHtml(events) {
   if (!events.length) return '';
   return `<ul class="holidays">${events.map((e) =>
@@ -115,15 +123,16 @@ export function dayHtml(day, { today, mode }) {
   const past = day.date < today, isToday = day.date === today;
   const cls = `day${past ? ' past' : ''}${isToday ? ' today' : ''}`;
   const holidays = day.events.filter((e) => e.holiday);
+  const birthdays = day.events.filter((e) => e.birthday);
   // Events from a reminder calendar (Home Tasks) join the reminder bars.
   const calReminders = day.events.filter((e) => e.reminder)
     .map((e) => ({ text: e.time ? `${e.time} · ${e.title}` : e.title, when: 'calendar' }));
-  const others = day.events.filter((e) => !e.holiday && !e.reminder);
+  const others = day.events.filter((e) => !e.holiday && !e.reminder && !e.birthday);
   const events = others.length
     ? `<ul class="events">${others.map((e) => eventHtml(e, mode)).join('')}</ul>`
-    : (holidays.length || day.notices?.length || calReminders.length ? '' : '<p class="empty">Nothing scheduled</p>');
+    : (holidays.length || birthdays.length || day.notices?.length || calReminders.length ? '' : '<p class="empty">Nothing scheduled</p>');
   const notices = [...(day.notices || []), ...calReminders];
-  const top = holidaysHtml(holidays) + noticesHtml(notices);
+  const top = holidaysHtml(holidays) + birthdaysHtml(birthdays, mode) + noticesHtml(notices);
   const inner = `<header class="day-head"><span class="dow">${esc(day.dow)}</span>` +
     `<span class="date">${esc(day.label)}</span>${isToday ? '<span class="today-tag">Today</span>' : ''}</header>` +
     weatherHtml(day.weather, null, mode) + top + events;
@@ -280,6 +289,11 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
   padding: 7px 10px; font-size: 27px; font-weight: 700; line-height: 1.15; }
 .star { width: 24px; height: 24px; flex: none; }
 .past .holiday { border-color: #9a9a9a; }
+.birthdays { list-style: none; display: flex; flex-direction: column; gap: 8px; padding-top: 14px; }
+.birthday { display: flex; align-items: center; gap: 8px; border: 3px dashed #000; border-radius: 6px;
+  padding: 7px 10px; font-size: 26px; font-weight: 700; line-height: 1.15; }
+.cake { width: 28px; height: 28px; flex: none; }
+.past .birthday { border-color: #9a9a9a; }
 .notices { list-style: none; display: flex; flex-direction: column; gap: 8px; padding-top: 14px; }
 .notice { display: flex; align-items: center; gap: 8px; background: #000; color: #fff; font-size: 24px;
   font-weight: 700; line-height: 1.15; padding: 8px 10px; border-radius: 6px; }

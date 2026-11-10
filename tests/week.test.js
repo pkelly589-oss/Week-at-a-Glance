@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isoDate, startOfDay, weekOf, weekTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
-  layoutWeek, eventDates, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
+  layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
 } from '../public/lib/week.js';
 import { weekHtml, einkDocument, esc, plainText } from '../public/lib/view.js';
@@ -416,4 +416,33 @@ test('refreshes come at midnight and noon, across the clock changes', () => {
   assert.equal(secondsToNextRefresh(t('2026-11-01T00:00:00-07:00')), 13 * 3600 + 30);
   assert.equal(new Date(lastRefreshAt(t('2026-11-10T09:00:00-08:00'))).toISOString(), '2026-11-10T08:00:00.000Z');
   assert.equal(new Date(lastRefreshAt(t('2026-11-10T13:00:00-08:00'))).toISOString(), '2026-11-10T20:00:00.000Z');
+});
+
+test('birthdays get their own look; plans around birthdays stay events', () => {
+  const day = (d = '2026-11-12') => ({ start: { date: d }, end: { date: addDaysFix(d, 1) } });
+  function addDaysFix(d, n) { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
+  // As on your calendar.
+  for (const t of ['Lisa’s Birthday', 'Stevens birthday', "Jameson's Birthday!!", 'Spencer’s birthday', 'Mo bday 🎂']) {
+    assert.equal(isBirthdayEvent({ summary: t, ...day() }), true, t);
+  }
+  assert.equal(isBirthdayEvent({ summary: 'Paul Davis birthday party', start: { dateTime: '2026-02-22T17:00:00-08:00' } }), false);
+  assert.equal(isBirthdayEvent({ summary: "Tahoe Weekend for Jake's Birthday", start: { date: '2026-02-19' }, end: { date: '2026-02-23' } }), false);
+  assert.equal(isBirthdayEvent({ summary: "Supper Club (Pete's Birthday Edition)", ...day() }), false);
+  assert.equal(isBirthdayEvent({ summary: "Mom's birthday call", start: { dateTime: '2026-11-08T16:00:00-08:00' } }), false);
+  assert.equal(isBirthdayEvent({ summary: 'Sam', eventType: 'birthday', ...day() }), true);
+
+  const week = weekOf('2026-11-09');
+  const events = buildEvents([
+    { person: 'pete', events: [ev({ summary: 'Lisa’s Birthday', ...day() }), ev({ summary: 'Dentist', start: { dateTime: '2026-11-12T09:00:00-08:00' }, end: { dateTime: '2026-11-12T10:00:00-08:00' } })] },
+    { person: null, holiday: true, events: [ev({ summary: 'Some Holiday', ...day() })] },
+    { person: null, reminder: true, events: [ev({ summary: 'Fertilize citrus', ...day() })] },
+  ], PEOPLE);
+  const thu = layoutWeek(events, week)['2026-11-12'];
+  assert.deepEqual(thu.map((r) => r.title), ['Some Holiday', 'Lisa’s Birthday', 'Fertilize citrus', 'Dentist']);
+  assert.equal(thu[1].birthday, true);
+  assert.deepEqual(thu[1].badges, []);
+  const html = weekHtml(buildSnapshot({ asOf: '2026-11-09', builtAt: 0, week, events, weather: {} }), { mode: 'eink' });
+  const thuHtml = html.slice(html.indexOf('data-date="2026-11-12"'), html.indexOf('data-date="2026-11-13"'));
+  assert.match(thuHtml, /<li class="birthday"><svg class="cake"[^]*?<span>Lisa’s Birthday<\/span>/);
+  assert.ok(thuHtml.indexOf('Some Holiday') < thuHtml.indexOf('Lisa’s Birthday') && thuHtml.indexOf('Lisa’s Birthday') < thuHtml.indexOf('Fertilize'));
 });

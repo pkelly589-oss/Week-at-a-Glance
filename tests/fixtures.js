@@ -53,6 +53,7 @@ export function calendarSources() {
   const pete = [
     ...shared,
     e('Run club', at('2026-11-09', '06:30', 60)),
+    e('Lisa’s Birthday', allDay('2026-11-12', '2026-11-13')),
     e('Temescal farmers market', at('2026-11-08', '09:00', 240), both()),
     e('South Berkeley Farmers Market', at('2026-11-10', '14:00', 270), both()),
     e('Put out trash for pickup', at('2026-11-11', '21:00', 15), both()),

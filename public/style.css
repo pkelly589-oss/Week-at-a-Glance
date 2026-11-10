@@ -155,6 +155,10 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--pete); ou
 .holiday { display: flex; align-items: center; gap: 8px; border: 2px solid var(--accent); border-radius: 8px;
   padding: 6px 10px; font-weight: 700; }
 .star { width: 15px; height: 15px; flex: none; color: var(--david); }
+.birthdays { list-style: none; margin: 0; padding: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.birthday { display: flex; align-items: center; gap: 8px; border: 2px dashed var(--david); border-radius: 8px;
+  padding: 6px 10px; font-weight: 700; }
+.cake { width: 18px; height: 18px; flex: none; color: var(--david); }
 .notices { list-style: none; margin: 0; padding: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
 .notice { display: flex; align-items: center; gap: 8px; background: var(--warn-soft); color: var(--warn);
   border-radius: 8px; padding: 7px 10px; font-weight: 650; font-size: 0.92rem; }
