@@ -121,11 +121,12 @@ export function stampLabel(ms) {
 }
 
 // ---------------------------------------------------------------------------
-// The days shown: yesterday, today and the next five
+// The days shown: today and the next six
 // ---------------------------------------------------------------------------
-// (requirements: Display > window). Today is always the second of seven.
+// (requirements: Display > window). Today is always the first of seven; no
+// past days are shown.
 
-export const DAYS_BEFORE = 1, DAYS_SHOWN = 7;
+export const DAYS_BEFORE = 0, DAYS_SHOWN = 7;
 
 export function windowOf(iso) {
   const start = addDays(iso, -DAYS_BEFORE);

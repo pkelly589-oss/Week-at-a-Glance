@@ -35,11 +35,11 @@ const json = (body, status = 200) => ({ ok: status < 400, status, json: async ()
 
 const OPEN_METEO = {
   daily: {
-    time: ['2026-11-08', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'],
-    weather_code: [0, 2, 3, 63, 53, 2, 0, 1],
-    temperature_2m_max: [66, 63, 60, 57, 58, 61, 64, 65],
-    temperature_2m_min: [48, 50, 52, 50, 49, 47, 46, 47],
-    precipitation_probability_max: [0, 10, 20, 80, 40, 10, 0, 0],
+    time: ['2026-11-08', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16'],
+    weather_code: [0, 2, 3, 63, 53, 2, 0, 1, 80],
+    temperature_2m_max: [66, 63, 60, 57, 58, 61, 64, 65, 59],
+    temperature_2m_min: [48, 50, 52, 50, 49, 47, 46, 47, 48],
+    precipitation_probability_max: [0, 10, 20, 80, 40, 10, 0, 0, 60],
   },
   current: { time: '2026-11-09T23:45', interval: 900, temperature_2m: 53.4, weather_code: 0, is_day: 0 },
 };
@@ -127,10 +127,11 @@ const build = (opts = {}) => runBuild({
 test('a build stores the merged week, the image and a good status', async () => {
   const bucket = fakeBucket();
   await build({ bucket });
-  const week = (await db.doc('weeks/2026-11-09').get()).data(); // keyed by the window's first day
-  assert.equal(week.title, 'Nov 9 – 15');
-  assert.equal(week.subtitle, 'Mon – Sun');
-  assert.deepEqual(week.days.map((d) => d.date)[0], '2026-11-09');
+  const week = (await db.doc('weeks/2026-11-10').get()).data(); // keyed by the window's first day, today
+  assert.equal(week.title, 'Nov 10 – 16');
+  assert.equal(week.subtitle, 'Tue – Mon');
+  assert.deepEqual(week.days.map((d) => d.date), ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16']);
+  assert.ok(!week.days.some((d) => d.events.some((e) => e.title === 'Run club')), 'past days are left out');
   assert.equal(week.as_of, '2026-11-10');
   const tue = week.days.find((d) => d.date === '2026-11-10');
   const dinner = tue.events.find((e) => e.title.startsWith('Dinner at Nido'));
@@ -148,8 +149,8 @@ test('a build stores the merged week, the image and a good status', async () => 
   const wed = week.days.find((d) => d.date === '2026-11-11');
   assert.equal(wed.events[0].title, 'Veterans Day');
   assert.equal(wed.events[0].holiday, true); // holiday calendar found by its ID
-  const mon = week.days.find((d) => d.date === '2026-11-09');
-  const call = mon.events.find((e) => e.title === 'Housewarming planning call');
+  const fri = week.days.find((d) => d.date === '2026-11-13');
+  const call = fri.events.find((e) => e.title === 'Housewarming planning call');
   assert.deepEqual(call.badges, ['P', 'D']);
   assert.equal(call.location, null); // meeting links aren't shown
 
@@ -162,7 +163,7 @@ test('a build stores the merged week, the image and a good status', async () => 
   const status = (await db.doc('status/latest').get()).data();
   assert.equal(status.ok, true);
   assert.equal(status.consecutive_failures, 0);
-  assert.match(status.image, /^week-20261109-\d{10}$/);
+  assert.match(status.image, /^week-20261110-\d{10}$/);
   assert.ok(status.image.length <= 31); // TRMNL filename limit
   const r = (await db.doc(`renders/${status.image}`).get()).data();
   assert.ok(bucket.files.has(r.path));
@@ -180,8 +181,8 @@ test("one calendar failing still builds, with a warning naming it", async () => 
   const snap = await build({ fetch: fakeFetch({ davidDown: true }) });
   assert.deepEqual(snap.warnings, ["Couldn't read David's calendar"]);
   const all = snap.days.flatMap((d) => d.events.map((e) => e.title));
-  assert.ok(all.includes('Run club'));
-  assert.ok(!all.includes('Climbing'));
+  assert.ok(all.includes('Team retro'));
+  assert.ok(!all.includes('Haircut'));
 });
 
 test('a revoked Google token fails the build and is flagged on the page', async () => {
@@ -195,17 +196,16 @@ test('a revoked Google token fails the build and is flagged on the page', async 
   assert.equal(status.ok, false);
   assert.equal(status.consecutive_failures, 2);
   assert.equal(status.google_disconnected, true);
-  assert.equal(status.week_id, '2026-11-09'); // the last good window is still pointed at
+  assert.equal(status.week_id, '2026-11-10'); // the last good window is still pointed at
 });
 
-test('if Open-Meteo is down, NWS covers the days ahead and past days keep their forecast', async () => {
+test('if Open-Meteo is down, NWS covers the days ahead and the rest keep their earlier forecast', async () => {
   await build({ asOf: '2026-11-09', now: NOW - 864e5 }); // Monday's build, with Open-Meteo up
   const fetch = fakeFetch({ openMeteoDown: true });
   const snap = await build({ fetch });
   const byDate = Object.fromEntries(snap.days.map((d) => [d.date, d.weather]));
   assert.equal(byDate['2026-11-10'].source, 'nws');
   assert.equal(byDate['2026-11-11'].label, 'Rain');
-  assert.equal(byDate['2026-11-09'].stale, true);        // yesterday: kept from the last build's window
   assert.equal(byDate['2026-11-13'].stale, true);        // beyond NWS here: kept, and…
   assert.deepEqual(snap.warnings, ['Some weather is from an earlier forecast']); // …flagged
   assert.ok(fetch.calls.some((u) => u.includes('api.weather.gov')));
@@ -220,7 +220,7 @@ test('snapshots and images older than 14 days are deleted', async () => {
   assert.equal((await db.doc('weeks/2026-10-18').get()).exists, false);
   assert.equal((await db.doc('renders/week-20261018-1').get()).exists, false);
   assert.equal(bucket.files.has('renders/old.png'), false);
-  assert.equal((await db.doc('weeks/2026-11-09').get()).exists, true);
+  assert.equal((await db.doc('weeks/2026-11-10').get()).exists, true);
 });
 
 test('missing household settings stop the build with a pointer to the README', async () => {
@@ -312,7 +312,7 @@ test('air quality down: earlier values are kept, with a warning only if today ha
   const snap = await build({ fetch: fakeFetch({ airDown: true }) });
   assert.equal(snap.days.find((d) => d.date === '2026-11-10').aqi, 72);
   assert.deepEqual(snap.warnings, []);
-  await db.doc('weeks/2026-11-09').delete();
+  await db.doc('weeks/2026-11-10').delete();
   const fresh = await build({ fetch: fakeFetch({ airDown: true }) });
   assert.deepEqual(fresh.warnings, ['Air quality unavailable']);
 });

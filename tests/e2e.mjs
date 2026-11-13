@@ -61,16 +61,15 @@ assert.equal(await page.textContent('#denied-email'), STRANGER);
 await page.click('#denied-signout');
 await page.waitForSelector('#view-signin:not([hidden])');
 
-// 2. The household sees the week, today marked, past days folded.
+// 2. The household sees the week: today first, no past days.
 await signIn(page, MEMBER);
 await page.waitForSelector('.day.today');
-assert.equal(await page.textContent('.week-head .wk-of'), 'Mon – Sun');
-assert.equal(await page.textContent('.week-head .wk-range'), 'Nov 9 – 15');
+assert.equal(await page.textContent('.week-head .wk-of'), 'Tue – Mon');
+assert.equal(await page.textContent('.week-head .wk-range'), 'Nov 10 – 16');
 assert.equal(await page.getAttribute('.day.today', 'data-date'), '2026-11-10');
-assert.equal(await page.locator('.day.past').count(), 1); // only yesterday
+assert.equal(await page.getAttribute('.day >> nth=0', 'data-date'), '2026-11-10'); // today first
+assert.equal(await page.locator('.day.past').count(), 0);
 assert.equal(await page.locator('.day').count(), 7);
-assert.equal(await page.locator('.past-fold[open]').count(), 0);
-assert.match(await page.textContent('.day[data-date="2026-11-09"] summary'), /\d+ events/);
 const tueTitles = await page.locator('.day.today .title').allTextContents();
 assert.ok(tueTitles.includes('Dinner at Nido with Sam & Ari'));
 assert.ok(!tueTitles.includes('Physical therapy'), 'private events stay hidden');
@@ -93,9 +92,9 @@ assert.match(await page.textContent('#banners'), /battery is at about 14%/);
 await shot(page, 'web-2-phone');
 await shot(page, 'web-2-phone-viewport', false);
 
-// 5. Desktop: seven columns, past days open.
+// 5. Desktop: seven columns.
 await page.setViewportSize({ width: 1440, height: 1000 });
-await page.waitForFunction(() => document.querySelectorAll('.past-fold[open]').length === 1);
+await page.waitForFunction(() => getComputedStyle(document.querySelector('.week')).gridTemplateColumns.split(' ').length === 7);
 const cols = await page.evaluate(() => getComputedStyle(document.querySelector('.week')).gridTemplateColumns.split(' ').length);
 const wxHeights = await page.evaluate(() => [...document.querySelectorAll('.day .wx')].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().height));
 assert.equal(new Set(wxHeights).size, 1, `weather boxes differ: ${wxHeights}`);

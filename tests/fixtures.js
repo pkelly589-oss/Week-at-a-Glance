@@ -40,7 +40,8 @@ const both = (s1 = 'accepted', s2 = 'accepted') => ({ organizer: { email: PETE }
 let n = 0;
 const e = (summary, when, extra = {}) => ({ id: `f${++n}`, iCalUID: `fixture-${n}@example.com`, status: 'confirmed', summary, ...when, ...extra });
 
-// Events around Sun Nov 8 – Sun Nov 15, 2026 (the sample window is Mon Nov 9 – Sun Nov 15).
+// Events around Sun Nov 8 – Mon Nov 16, 2026 (the sample window is Tue Nov 10 – Mon Nov 16;
+// the Nov 8 and Nov 9 events are in the past and shouldn't show).
 export function calendarSources() {
   n = 0;
   const shared = [
@@ -83,7 +84,7 @@ export function calendarSources() {
   ];
   const house = [
     e('Gutter cleaning', at('2026-11-12', '10:00', 120), { location: '123 Example St, Oakland, CA' }),
-    e('Housewarming planning call', at('2026-11-09', '20:00', 30), { location: 'https://meet.google.com/abc-defg-hij', attendees: [a(PETE, 'accepted'), a(DAVID, 'accepted')] }),
+    e('Housewarming planning call', at('2026-11-13', '20:00', 30), { location: 'https://meet.google.com/abc-defg-hij', attendees: [a(PETE, 'accepted'), a(DAVID, 'accepted')] }),
   ];
   const holidays = [
     e('Veterans Day', allDay('2026-11-11', '2026-11-12'), { iCalUID: '20261111_veterans@google.com' }),
@@ -106,6 +107,7 @@ export const WEATHER = {
   '2026-11-13': { icon: 'partly', label: 'Partly cloudy', hi: 61, lo: 47, rain: 10 },
   '2026-11-14': { icon: 'sun', label: 'Sunny', hi: 64, lo: 46, rain: 0 },
   '2026-11-15': { icon: 'partly', label: 'Partly cloudy', hi: 62, lo: 47, rain: 10 },
+  '2026-11-16': { icon: 'rain', label: 'Showers', hi: 59, lo: 48, rain: 60 },
 };
 
 export const AIR = { '2026-11-08': 32, '2026-11-09': 48, '2026-11-10': 64, '2026-11-11': 41, '2026-11-12': 118, '2026-11-13': 87 };

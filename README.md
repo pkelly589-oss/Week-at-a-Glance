@@ -1,7 +1,6 @@
 # Week at a Glance
 
-The household's next week on one screen (yesterday, today and the five days
-after): both Google Calendars
+The household's next week on one screen (today and the six days after): both Google Calendars
 merged into a plain list per day, with the weather for each day. It is shown
 on a TRMNL X e-ink display by the front door, refreshed every 30 minutes from 7am
 to 11:30pm and once just after midnight, and on a web page for phones and computers.
@@ -14,9 +13,9 @@ Firestore, no secrets and no email addresses in the repository.
 
 - **Your calendars, plus shared ones:** both of yours, Home Tasks, the house
   calendar and US holidays (set in step 6).
-- **Seven days: yesterday, today and the next five**, so today is always the
-  second column and the view never runs out at the weekend. The header shows
-  the weekdays and dates on view ("Mon – Sun" / "Nov 9 – 15").
+- **Seven days: today and the next six**, so today is always the first
+  column and the view never runs out at the weekend. No past days are shown.
+  The header shows the weekdays and dates on view ("Tue – Mon" / "Nov 10 – 16").
 - **One list per day.** No hour grid. In each day:
   holidays first (outlined, with a star), then birthdays (dashed outline, with
   a cake), then reminders, then all-day events,
@@ -58,9 +57,9 @@ Firestore, no secrets and no email addresses in the repository.
 - **Household reminders** as black bars at the top of the day: fixed routines
   such as "Bins out tonight" or "Street sweeping today" (their calendar copies
   are hidden), and everything on a calendar marked `as_reminders` (Home Tasks).
-- **E-ink:** today's column is inverted, yesterday is greyed, a crowded day
+- **E-ink:** today's column is inverted, a crowded day
   ends with "+3 more", and emoji are dropped (the display has no emoji font).
-- **Web page:** stacked days on a phone (opens at today, yesterday folded),
+- **Web page:** stacked days on a phone, today first,
   seven columns on a computer, coloured badges, light/dark, add to home screen.
 - **Banners** on the web page for a failed update, a Google connection that
   needs renewing, a display battery under 20%, a display that hasn't checked
@@ -135,7 +134,7 @@ All written by the functions; browsers only read `weeks` and `status`.
 | --- | --- |
 | `allowlist/{email}` | `role`: `owner` or `member` (as in Fridge Board) |
 | `config/household` | Who's who, which calendars, and the home's coordinates (step 6) |
-| `weeks/{first day}` | The snapshot for a 7-day window: `title` ("Nov 9 – 15"), `subtitle` ("Mon – Sun"), `as_of` (today), `built_at`, `warnings`, `energy` (yesterday's kWh totals and battery %), and `days[]` with weather and events |
+| `weeks/{first day}` | The snapshot for a 7-day window: `title` ("Nov 10 – 16"), `subtitle` ("Tue – Mon"), `as_of` (today), `built_at`, `warnings`, `energy` (yesterday's kWh totals and battery %), and `days[]` with weather and events |
 | `status/latest` | Last build: `ok`, `week_id`, `image`, `last_error`, `consecutive_failures` |
 | `status/device` | The display's last check-in, battery, and any device waiting for approval |
 | `devices/{MAC}` | An approved display and its API key |

@@ -26,16 +26,16 @@ const ev = (o = {}) => ({
 const att = (email, responseStatus, extra = {}) => ({ email, responseStatus, ...extra });
 const titles = (events) => events.map((e) => e.title);
 
-test('the window is yesterday, today and the next five days, in Pacific time', () => {
+test('the window is today and the next six days, in Pacific time', () => {
   const w = windowOf('2026-11-10'); // a Tuesday
-  assert.equal(w.start, '2026-11-09');
-  assert.equal(w.end, '2026-11-15');
+  assert.equal(w.start, '2026-11-10');
+  assert.equal(w.end, '2026-11-16');
   assert.equal(w.dates.length, 7);
-  assert.equal(w.dates[1], '2026-11-10'); // today is always second
-  assert.equal(windowOf('2026-11-14').start, '2026-11-13'); // Saturday: no longer mostly past
-  assert.equal(windowOf('2026-11-30').end, '2026-12-05');   // across a month
-  assert.equal(new Date(w.timeMin).toISOString(), '2026-11-09T08:00:00.000Z');
-  assert.equal(new Date(w.timeMax).toISOString(), '2026-11-16T08:00:00.000Z');
+  assert.equal(w.dates[0], '2026-11-10'); // today is always first; no past days
+  assert.equal(windowOf('2026-11-14').start, '2026-11-14');
+  assert.equal(windowOf('2026-11-30').end, '2026-12-06');   // across a month
+  assert.equal(new Date(w.timeMin).toISOString(), '2026-11-10T08:00:00.000Z');
+  assert.equal(new Date(w.timeMax).toISOString(), '2026-11-17T08:00:00.000Z');
   assert.equal(rangeTitle('2026-11-09', '2026-11-15'), 'Nov 9 – 15');
   assert.equal(rangeTitle('2026-11-29', '2026-12-05'), 'Nov 29 – Dec 5');
 });
@@ -187,7 +187,7 @@ test('weather: Open-Meteo and NWS parse to the same shape', () => {
   assert.equal(showRain({ rain: 20 }), true);
 });
 
-test('the markup escapes calendar text and marks today and past days', () => {
+test('the markup escapes calendar text and marks today, with no past days', () => {
   const week = windowOf('2026-11-10');
   const snap = buildSnapshot({
     asOf: '2026-11-10', builtAt: Date.parse('2026-11-09T23:55:00-08:00'), week,
@@ -199,14 +199,14 @@ test('the markup escapes calendar text and marks today and past days', () => {
   assert.ok(!html.includes('<img'));
   assert.ok(html.includes('&lt;img src=x'));
   assert.ok(html.includes('class="day today" data-date="2026-11-10"'));
-  assert.ok(html.includes('class="day past" data-date="2026-11-09"'));
-  assert.equal((html.match(/class="day past"/g) || []).length, 1, 'only yesterday is past');
+  assert.ok(!html.includes('class="day past'), 'no past days');
+  assert.ok(html.indexOf('data-date="2026-11-10"') < html.indexOf('data-date="2026-11-11"'));
   assert.ok(html.includes('Updated Mon 11:55 PM'));
   assert.ok(html.includes('70%'));
   assert.ok(html.includes('&quot;Home&quot;'), 'locations show, escaped');
-  assert.ok(einkDocument(snap).includes('<span class="wk-of">Mon – Sun</span><span class="wk-range">Nov 9 – 15</span>'));
+  assert.ok(einkDocument(snap).includes('<span class="wk-of">Tue – Mon</span><span class="wk-range">Nov 10 – 16</span>'));
   // Without the subtitle field, the weekday line comes from the days.
-  assert.ok(weekHtml({ ...snap, subtitle: undefined }).includes('<span class="wk-of">Mon – Sun</span>'));
+  assert.ok(weekHtml({ ...snap, subtitle: undefined }).includes('<span class="wk-of">Tue – Mon</span>'));
   // A snapshot built before the change still shows its old title, split.
   assert.ok(weekHtml({ ...snap, title: 'Week of Nov 8 – 14', subtitle: undefined }).includes('<span class="wk-of">Week of</span><span class="wk-range">Nov 8 – 14</span>'));
   assert.equal(esc(`a&'`), 'a&amp;&#39;');
