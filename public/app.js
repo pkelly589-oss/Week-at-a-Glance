@@ -197,6 +197,9 @@ function renderBanners() {
   if (dev?.pending_mac) {
     out.push(['info', `A display (MAC <code>${esc(dev.pending_mac)}</code>) asked to connect. Approve it by adding <code>devices/${esc(dev.pending_mac)}</code> in Firestore (README, step 8).`]);
   }
+  if (dev?.refused_mac) {
+    out.push(['warn', `A display using MAC <code>${esc(dev.refused_mac)}</code> asked for its key again on ${esc(stampLabel(dev.refused_at))}, and was refused. If you reset your display, delete <code>api_key</code> from <code>devices/${esc(dev.refused_mac)}</code> in Firestore so it can set up again. If you didn't, someone may be trying to impersonate it; nothing was given out.`]);
+  }
   $('banners').innerHTML = out.map(([kind, html]) => `<div class="banner ${kind}">${html}</div>`).join('');
 }
 

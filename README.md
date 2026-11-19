@@ -136,8 +136,8 @@ All written by the functions; browsers only read `weeks` and `status`.
 | `config/household` | Who's who, which calendars, and the home's coordinates (step 6) |
 | `weeks/{first day}` | The snapshot for a 7-day window: `title` ("Nov 10 – 16"), `subtitle` ("Tue – Mon"), `as_of` (today), `built_at`, `warnings`, `energy` (yesterday's kWh totals and battery %), and `days[]` with weather and events |
 | `status/latest` | Last build: `ok`, `week_id`, `image`, `last_error`, `consecutive_failures` |
-| `status/device` | The display's last check-in, battery, and any device waiting for approval |
-| `devices/{MAC}` | An approved display and its API key |
+| `status/device` | The display's last check-in, battery, any device waiting for approval, and any refused repeat setup |
+| `devices/{MAC}` | An approved display and its API key (handed out once; delete `api_key` to set the display up again) |
 | `renders/{name}` | Where each PNG is stored and the token in its URL |
 | `private/enphase` | Enphase's current access and refresh tokens (they rotate, so they're kept here, not in Secret Manager) |
 | `private/enphase_cache` | Yesterday's raw Enphase totals (refetched only at 12:05am and 11:55am) and the battery level (reused for 55 minutes, so fetched about hourly), so builds stay within the free API allowance |
@@ -380,14 +380,30 @@ image is ready.
 
 ### 8. Set up the TRMNL X
 
-1. Hold the device's reset to enter Wi-Fi setup, join its "TRMNL" network from
-   your phone, enter your Wi-Fi, and under the custom server option enter
-   `https://<project-id>.web.app`.
-2. The first time it connects, the web page shows "A display (MAC …) asked to
-   connect". In Firestore, create `devices/<that MAC>` with any field (for
-   example `approved` = `true`).
-3. Reset or wake the device. It fetches a key, shows the week, and from then on
-   wakes every 30 minutes from 7am to 11:30pm and at 12:10am, and sleeps through the night.
+1. **Open the device's Wi-Fi setup.** On firmware 1.8.18 or later (shown under
+   Device Info): tap the middle of the touch bar to open the menu, choose
+   **Settings**, then **Reset Wi-Fi**, and confirm. On earlier firmware: hold
+   both ends of the touch bar until the screen blinks, then hold the middle.
+   A new device opens Wi-Fi setup by itself.
+2. **Point it at this server.** On your phone, join the device's **TRMNL**
+   Wi-Fi network. In the setup page that opens, tap **Advanced Settings** and
+   enter the server address with no trailing slash:
+   `https://<project-id>.web.app`. Tap **Back**, choose your home Wi-Fi and
+   enter its password. (Left blank, the device uses TRMNL's own service.)
+3. **Approve it.** Its first contact is refused, and the web page shows "A
+   display (MAC …) asked to connect". In the Firebase console, open Firestore
+   and create the document `devices/<that MAC>`, exactly as shown, with any
+   field (for example `approved` = `true`).
+4. **Wake it** (tap the middle of the touch bar and choose **Next Screen**, or
+   wait for it to retry). It gets its key, the banner clears, and it shows the
+   week. From then on it wakes every 30 minutes from 7am to 11:30pm and at
+   12:10am, and sleeps through the night.
+
+The key is handed out only once, so nobody who learns the display's MAC can
+get it later. If you reset the display and it has to set up again, the page
+says so: delete the `api_key` field from `devices/<MAC>` and wake the
+display. A refusal you didn't cause means something else tried to use the
+display's MAC; nothing was given out.
 
 The device refreshes 35 times a day. At an estimated 0.5–1.5 mAh per refresh,
 plus its sleep draw, the 12,000 mAh battery should last roughly 7 months to
@@ -413,7 +429,7 @@ npx firebase functions:log --only refreshNow -n 40     # or nightlyBuild, device
 | Deploy: *"Firebase Storage has not been set up"* | Step 1.5 was skipped. Storage > Get started (`us-west1`, production mode), then deploy again |
 | `connect-google` or deploy: *"Secret Manager API has not been used … or it is disabled"* | Enable the Secret Manager API (step 3.2), wait a minute, run the command again |
 | Deploy: *"Could not create Cloud Run service …"* | New-project permissions still settling. Wait 5 minutes, deploy again |
-| Refresh now says **internal**, and the log says *"The request was not authenticated"* | The function isn't public. Cloud Run > `refreshnow` > Security > **Allow public access** > Save. Same for `device` if the TRMNL gets 403 errors. The code still checks sign-in and the allowlist (Refresh now) or the MAC and key (display) |
+| Refresh now says **internal**, and the log says *"The request was not authenticated"* | The function isn't public. Cloud Run > `refreshnow` > Security > **Allow public access** > Save. Same for `device` if the TRMNL's requests never show up in its log (`npx firebase functions:log --only device`). The code still checks sign-in and the allowlist (Refresh now) or the MAC and key (display) |
 | Refresh now says **Refresh failed: …** | The build ran and failed; the message says why. A "Google … connect-google" message means the token was revoked or expired: run `npm run connect-google`, then deploy |
 | *"Refreshed recently. Try again in 1 min"* | Refresh now runs at most once a minute. Wait, or delete `last_manual_at` from `status/latest` in Firestore |
 | *"No week has been built yet"* | Normal before the first build: tap Refresh now |
@@ -424,6 +440,9 @@ npx firebase functions:log --only refreshNow -n 40     # or nightlyBuild, device
 | Warning *"Enphase access expired"* | Run `npm run connect-enphase`, then `npm run deploy` |
 | Warning *"Solar data unavailable"* | Enphase didn't answer; the strip shows the last figures, marked "earlier". `npx firebase functions:log --only nightlyBuild` shows which call failed (a 401/403 means an Access Control box is missing from the Enphase app) |
 | A change in `config/household` doesn't show | It applies at the next build (every 30 minutes), or tap Refresh now |
+| The display shows an error after Wi-Fi setup, and the page has no "asked to connect" banner | Check the server address in Advanced Settings: `https://`, your project's `.web.app` address, no trailing slash. Then `npx firebase functions:log --only device` |
+| The page says a display "asked for its key again… and was refused" | If you reset the display: delete `api_key` from `devices/<MAC>` in Firestore, then wake it. If you didn't, leave it; nothing was given out |
+| The display shows the "waiting" picture | It's connected, but no week has been built yet: tap Refresh now on the web page, then wake the display |
 | Code changes don't show | Run `npm run deploy` (or `npx firebase deploy --only functions` for build and display changes only), then Refresh now |
 
 ## Local development

@@ -75,11 +75,17 @@ export function makeDeviceHandler({ db, bucket, now = () => Date.now() }) {
           if (mac) await db.doc('status/device').set({ pending_mac: mac, pending_at: now() }, { merge: true });
           return res.status(404).json({ status: 404, message: `Add devices/${mac || '<MAC>'} in Firestore first (see README)` });
         }
-        let key = snap.data().api_key;
-        if (!key) {
-          key = randomBytes(24).toString('base64url');
-          await snap.ref.set({ api_key: key, set_up_at: now() }, { merge: true });
+        // The key is handed out once. Anyone who knew the MAC could otherwise
+        // ask for it again and fetch the household's images. To set a display
+        // up again (after a reset), delete api_key from devices/<MAC>.
+        if (snap.data().api_key) {
+          console.warn('Setup again from an already set-up device', mac);
+          await db.doc('status/device').set({ refused_mac: mac, refused_at: now() }, { merge: true });
+          return res.status(403).json({ status: 403, message: `Already set up. To set it up again, delete api_key from devices/${mac} in Firestore.` });
         }
+        const key = randomBytes(24).toString('base64url');
+        await snap.ref.set({ api_key: key, set_up_at: now() }, { merge: true });
+        await db.doc('status/device').set({ pending_mac: null, refused_mac: null }, { merge: true });
         return res.json({
           status: 200, api_key: key, friendly_id: mac.replace(/:/g, '').slice(-6),
           image_url: `${baseUrl(req)}/eink/waiting.png`, message: 'Week at a Glance',
