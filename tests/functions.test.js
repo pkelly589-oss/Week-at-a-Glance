@@ -8,7 +8,7 @@ import { calendarSources, HOUSEHOLD, PETE, DAVID, ENPHASE } from './fixtures.js'
 
 const req = createRequire(new URL('../functions/package.json', import.meta.url));
 const { initializeApp } = req('firebase-admin/app');
-const { getFirestore, FieldValue } = req('firebase-admin/firestore');
+const { getFirestore } = req('firebase-admin/firestore');
 const { runBuild, recordFailure, BuildError } = await import('../functions/src/build.js');
 const { makeDeviceHandler, refreshRate, batteryPercent, RETRY_SECONDS } = await import('../functions/src/device.js');
 
@@ -267,19 +267,8 @@ test('an approved display gets a key, then the latest image and a sleep until 7a
   assert.ok(key.length > 20);
   // The approval banner clears once the display is set up.
   assert.equal((await db.doc('status/device').get()).data().pending_mac ?? null, null);
-  // The key is handed out once: asking again with the same MAC is refused,
-  // gives nothing away, and is flagged on the page.
-  const again = await call(handler, { path: '/api/setup', headers: { ID: MAC } });
-  assert.equal(again.code, 403);
-  assert.equal(again.body.api_key, undefined);
-  assert.equal((await db.doc('status/device').get()).data().refused_mac, MAC);
-  // After a reset, deleting api_key lets it set up again, with a new key.
-  await db.doc(`devices/${MAC}`).update({ api_key: FieldValue.delete() });
-  const redo = await call(handler, { path: '/api/setup', headers: { ID: MAC } });
-  assert.equal(redo.body.status, 200);
-  assert.notEqual(redo.body.api_key, key);
-  assert.equal((await db.doc('status/device').get()).data().refused_mac, null);
-  await db.doc(`devices/${MAC}`).update({ api_key: key }); // back to the first key for the checks below
+  // Asking again returns the same key.
+  assert.equal((await call(handler, { path: '/api/setup', headers: { ID: MAC } })).body.api_key, key);
 
   assert.equal((await call(handler, { path: '/api/display', headers: { ID: MAC, 'Access-Token': 'wrong' } })).code, 401);
 

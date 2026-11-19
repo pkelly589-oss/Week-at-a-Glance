@@ -136,8 +136,8 @@ All written by the functions; browsers only read `weeks` and `status`.
 | `config/household` | Who's who, which calendars, and the home's coordinates (step 6) |
 | `weeks/{first day}` | The snapshot for a 7-day window: `title` ("Nov 10 – 16"), `subtitle` ("Tue – Mon"), `as_of` (today), `built_at`, `warnings`, `energy` (yesterday's kWh totals and battery %), and `days[]` with weather and events |
 | `status/latest` | Last build: `ok`, `week_id`, `image`, `last_error`, `consecutive_failures` |
-| `status/device` | The display's last check-in, battery, any device waiting for approval, and any refused repeat setup |
-| `devices/{MAC}` | An approved display and its API key (handed out once; delete `api_key` to set the display up again) |
+| `status/device` | The display's last check-in, battery, and any device waiting for approval |
+| `devices/{MAC}` | An approved display and its API key |
 | `renders/{name}` | Where each PNG is stored and the token in its URL |
 | `private/enphase` | Enphase's current access and refresh tokens (they rotate, so they're kept here, not in Secret Manager) |
 | `private/enphase_cache` | Yesterday's raw Enphase totals (refetched only at 12:05am and 11:55am) and the battery level (reused for 55 minutes, so fetched about hourly), so builds stay within the free API allowance |
@@ -399,12 +399,6 @@ image is ready.
    week. From then on it wakes every 30 minutes from 7am to 11:30pm and at
    12:10am, and sleeps through the night.
 
-The key is handed out only once, so nobody who learns the display's MAC can
-get it later. If you reset the display and it has to set up again, the page
-says so: delete the `api_key` field from `devices/<MAC>` and wake the
-display. A refusal you didn't cause means something else tried to use the
-display's MAC; nothing was given out.
-
 The device refreshes 35 times a day. At an estimated 0.5–1.5 mAh per refresh,
 plus its sleep draw, the 12,000 mAh battery should last roughly 7 months to
 1½ years between charges (an estimate: TRMNL doesn't publish per-refresh figures for the
@@ -441,7 +435,6 @@ npx firebase functions:log --only refreshNow -n 40     # or nightlyBuild, device
 | Warning *"Solar data unavailable"* | Enphase didn't answer; the strip shows the last figures, marked "earlier". `npx firebase functions:log --only nightlyBuild` shows which call failed (a 401/403 means an Access Control box is missing from the Enphase app) |
 | A change in `config/household` doesn't show | It applies at the next build (every 30 minutes), or tap Refresh now |
 | The display shows an error after Wi-Fi setup, and the page has no "asked to connect" banner | Check the server address in Advanced Settings: `https://`, your project's `.web.app` address, no trailing slash. Then `npx firebase functions:log --only device` |
-| The page says a display "asked for its key again… and was refused" | If you reset the display: delete `api_key` from `devices/<MAC>` in Firestore, then wake it. If you didn't, leave it; nothing was given out |
 | The display shows the "waiting" picture | It's connected, but no week has been built yet: tap Refresh now on the web page, then wake the display |
 | Code changes don't show | Run `npm run deploy` (or `npx firebase deploy --only functions` for build and display changes only), then Refresh now |
 
