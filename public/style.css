@@ -73,6 +73,27 @@ code { font-size: 0.85em; background: color-mix(in srgb, var(--ink) 8%, transpar
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; }
 .mark { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .actions { display: flex; gap: 6px; }
+.top { flex-wrap: wrap; }
+.top .brand { order: 0; }
+.top .device-chip { order: 1; margin-left: auto; }
+.top .actions { order: 2; }
+
+/* The door display's status chip: a coloured dot, the state, the battery. */
+.device-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--ink-soft);
+  padding: 0 4px; white-space: nowrap; }
+.dc-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-soft); flex: none; }
+.device-chip.ok .dc-dot { background: #2f9e5b; }
+.device-chip.asleep .dc-dot { background: #7a8aa6; }
+.device-chip.late .dc-dot { background: #d08a1e; }
+.dc-sep { opacity: 0.6; }
+.dc-batt { display: inline-flex; align-items: center; gap: 4px; }
+.dc-batt svg { width: 20px; height: 12px; }
+.dc-batt.low { color: #c0392b; font-weight: 650; }
+@media (max-width: 599px) {
+  /* Phones: the chip takes its own line under the title and buttons. */
+  .top .device-chip { order: 3; flex-basis: 100%; justify-content: flex-end; margin: -2px 0 0; }
+  .top .actions { margin-left: auto; }
+}
 button { font: inherit; color: inherit; cursor: pointer; min-height: var(--tap); border-radius: 999px; padding: 0 16px; border: 1px solid transparent; }
 button:disabled { opacity: 0.6; cursor: progress; }
 .primary { background: var(--accent); color: var(--accent-ink); }

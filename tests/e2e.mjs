@@ -87,6 +87,10 @@ assert.match(await page.textContent('.energy'), /Yesterday’s energy.*Solar 18\
 // The credit line says where the header's AQI came from (the fixture has none named).
 assert.match(await page.textContent('#credits'), /Air quality now: AirNow \(EPA\), or Open-Meteo/);
 
+// The display chip: seen an hour ago, so it has missed the 11:30 check-in; low battery.
+assert.match(await page.textContent('#device-chip'), /Display last seen Tue 11:00 AM·14%/);
+assert.equal(await page.locator('#device-chip .dc-batt.low').count(), 1);
+
 // 4. Low-battery banner.
 assert.match(await page.textContent('#banners'), /battery is at about 14%/);
 await shot(page, 'web-2-phone');
@@ -100,6 +104,8 @@ const wxHeights = await page.evaluate(() => [...document.querySelectorAll('.day 
 assert.equal(new Set(wxHeights).size, 1, `weather boxes differ: ${wxHeights}`);
 assert.equal(cols, 7);
 await shot(page, 'web-3-desktop', false);
+await page.evaluate(() => window.scrollTo(0, 0));
+await page.screenshot({ path: 'test-results/web-3-desktop-top.png', clip: { x: 0, y: 0, width: 1440, height: 140 } });
 
 // 6. A failed night shows a banner, and the page updates live.
 await db.doc('status/latest').set({ ok: false, failed_at: TODAY.getTime(), last_error: 'No calendar could be read', google_disconnected: true }, { merge: true });

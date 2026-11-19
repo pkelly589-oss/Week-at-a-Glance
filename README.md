@@ -61,6 +61,10 @@ Firestore, no secrets and no email addresses in the repository.
   ends with "+3 more", and emoji are dropped (the display has no emoji font).
 - **Web page:** stacked days on a phone, today first,
   seven columns on a computer, coloured badges, light/dark, add to home screen.
+- **Display status** in the web page's top bar: "Display connected" (green)
+  while it checks in on schedule, "asleep until 7 AM" overnight, or "last
+  seen …" (amber) if it has missed a check-in, plus its battery level (red
+  below 20%). Hover for the last check-in time, Wi-Fi signal and firmware.
 - **Banners** on the web page for a failed update, a Google connection that
   needs renewing, a display battery under 20%, a display that hasn't checked
   in for two days, or a new display waiting to be approved.

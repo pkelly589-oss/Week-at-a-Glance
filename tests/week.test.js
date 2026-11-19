@@ -5,7 +5,7 @@ import {
   isoDate, startOfDay, windowOf, rangeTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
-  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow, REFRESH_HOURS, overnightBuild, buildDue,
+  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow, REFRESH_HOURS, overnightBuild, displayStatus, buildDue,
 } from '../public/lib/week.js';
 import { weekHtml, einkDocument, esc, plainText, energyHtml, creditsHtml } from '../public/lib/view.js';
 import { sampleEnergy, sampleSnapshot } from './fixtures.js';
@@ -564,4 +564,19 @@ test('the credit line names where the AQI came from', () => {
   assert.match(creditsHtml({ current: { aqi: 20, aqi_source: 'open-meteo' } }), /CAMS forecast; AirNow had no recent reading/);
   assert.match(creditsHtml({}), /AirNow<\/a> \(EPA\), or/);
   assert.match(creditsHtml({ current: { aqi_source: 'airnow', aqi_area: '<b>' } }), /&lt;b&gt;/);
+});
+
+test("the web page's display chip: connected, asleep, missed check-ins, never seen", () => {
+  const t = (s) => Date.parse(`2026-11-18T${s}-08:00`);
+  assert.deepEqual(displayStatus(null, t('21:44')), { state: 'none', text: 'Display not connected yet', battery: null });
+  const dev = (seen, battery_pct = 87) => ({ last_seen: t(seen), battery_pct });
+  assert.deepEqual(displayStatus(dev('21:30:40'), t('21:44')), { state: 'ok', text: 'Display connected', battery: 87 });
+  // Just after the hour, before it has woken: still fine.
+  assert.equal(displayStatus(dev('21:30:40'), t('22:04')).state, 'ok');
+  // Missed the 10pm check-in.
+  assert.deepEqual(displayStatus(dev('21:30:40', 40), t('22:15')), { state: 'late', text: 'Display last seen Wed 9:30 PM', battery: 40 });
+  // Overnight, after its 12:10am check-in.
+  assert.equal(displayStatus({ last_seen: Date.parse('2026-11-19T00:10:30-08:00'), battery_pct: 86 }, Date.parse('2026-11-19T03:00:00-08:00')).state, 'asleep');
+  // But it should have checked in at 12:10.
+  assert.equal(displayStatus(dev('23:30:30'), Date.parse('2026-11-19T03:00:00-08:00')).state, 'late');
 });

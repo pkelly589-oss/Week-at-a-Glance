@@ -783,3 +783,19 @@ export function energySummary(series, day, { soc = null, asOf = null } = {}) {
     battery_pct: soc,
   };
 }
+
+// ---------------------------------------------------------------------------
+// The door display's status, for the web page
+// ---------------------------------------------------------------------------
+// From status/device (written at each check-in). "ok" if it checked in for the
+// latest refresh (allowing a few minutes for it to wake and connect), "asleep"
+// in the overnight gap before 7am, "late" if it has missed check-ins, "none"
+// if it has never checked in.
+export function displayStatus(dev, now = Date.now()) {
+  const battery = dev?.battery_pct ?? null;
+  if (!dev?.last_seen) return { state: 'none', text: 'Display not connected yet', battery: null };
+  const due = lastRefreshAt(now - 10 * 6e4) - 2 * 6e4;
+  if (dev.last_seen < due) return { state: 'late', text: `Display last seen ${stampLabel(dev.last_seen)}`, battery };
+  if (secondsToNextRefresh(now) > 45 * 60) return { state: 'asleep', text: 'Display asleep until 7 AM', battery };
+  return { state: 'ok', text: 'Display connected', battery };
+}

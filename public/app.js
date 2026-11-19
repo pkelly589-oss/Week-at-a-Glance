@@ -23,7 +23,7 @@ import {
   getFunctions, connectFunctionsEmulator, httpsCallable,
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js';
 import { FIREBASE_CONFIG, EMULATOR_CONFIG } from './firebase-config.js';
-import { isoDate, stampLabel, windowOf } from './lib/week.js';
+import { isoDate, stampLabel, windowOf, displayStatus } from './lib/week.js';
 import { weekHtml, esc, creditsHtml } from './lib/view.js';
 
 // ---------------------------------------------------------------------------
@@ -61,6 +61,7 @@ const $ = (id) => document.getElementById(id);
 function show(view) {
   for (const id of ['view-loading', 'view-signin', 'view-denied', 'view-week']) $(id).hidden = id !== view;
   $('actions').hidden = view !== 'view-week';
+  $('device-chip').hidden = view !== 'view-week' || !state.deviceLoaded;
 }
 let toastTimer;
 function toast(msg) {
@@ -123,7 +124,9 @@ function listen() {
   }, onError));
   stops.push(onSnapshot(doc(db, 'status', 'device'), (s) => {
     state.device = s.data() || null;
+    state.deviceLoaded = true;
     renderBanners();
+    renderDevice();
   }, onError));
 }
 
@@ -172,6 +175,28 @@ function openPastOnDesktop() {
   for (const d of document.querySelectorAll('.past-fold')) d.open = wide.matches;
 }
 wide.addEventListener('change', openPastOnDesktop);
+
+// The display chip in the top bar: connected / asleep / last seen, and the
+// battery. Re-checked every minute, since "missed a check-in" depends on the clock.
+const BATTERY_ICON = (pct) => `<svg viewBox="0 0 24 14" aria-hidden="true"><rect x="1" y="1" width="19" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="21.5" y="4.5" width="1.6" height="5" rx="0.8" fill="currentColor"/><rect x="3" y="3" width="${(15 * Math.max(0, Math.min(100, pct)) / 100).toFixed(1)}" height="8" rx="1" fill="currentColor"/></svg>`;
+function renderDevice() {
+  const chip = $('device-chip');
+  const dev = state.device;
+  const s = displayStatus(dev);
+  const batt = s.battery != null
+    ? `<span class="dc-sep">·</span><span class="dc-batt${s.battery < LOW_BATTERY_PCT ? ' low' : ''}">${BATTERY_ICON(s.battery)}${esc(s.battery)}%</span>` : '';
+  chip.className = `device-chip ${s.state}`;
+  chip.innerHTML = `<span class="dc-dot" aria-hidden="true"></span><span class="dc-text">${esc(s.text)}</span>${batt}`;
+  const detail = [
+    dev?.last_seen && `Last check-in ${stampLabel(dev.last_seen)}`,
+    dev?.battery_voltage != null && `Battery ${dev.battery_voltage} V`,
+    dev?.rssi != null && `Wi-Fi ${dev.rssi} dBm`,
+    dev?.firmware && `Firmware ${dev.firmware}`,
+  ].filter(Boolean).join(' · ');
+  chip.title = detail || 'The door display hasn\'t checked in yet';
+  chip.hidden = $('actions').hidden; // only with the week
+}
+setInterval(() => { if (state.deviceLoaded) renderDevice(); }, 60e3);
 
 const LOW_BATTERY_PCT = 20;
 const DEVICE_SILENT_MS = 2 * 864e5;
