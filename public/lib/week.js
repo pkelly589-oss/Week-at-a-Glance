@@ -438,9 +438,18 @@ export function eventDates(ev) {
 
 // One row per day the event covers, inside the week only.
 // E-ink display > Event rows: all-day first, then by start time.
+// Time of day for a timed event's start: AM (before noon) or PM.
+export function partOfDay(ms) {
+  return zonedParts(ms).h < 12 ? 'am' : 'pm';
+}
+
+// Each day's rows. A multi-day event appears on each of its days, with
+// span { n, of, key }: key is shared by all its days, so the e-ink and the
+// desktop page can draw it as one bar across the columns. Timed rows carry
+// `part` (am / pm) for the day's sections.
 export function layoutWeek(events, week) {
   const days = Object.fromEntries(week.dates.map((d) => [d, []]));
-  for (const ev of events) {
+  events.forEach((ev, key) => {
     const dates = eventDates(ev);
     dates.forEach((d, i) => {
       if (!days[d]) return;
@@ -450,15 +459,16 @@ export function layoutWeek(events, week) {
         location: ev.location,
         allDay: ev.allDay || !firstDay,
         time: !ev.allDay && firstDay ? shortTime(ev.start) : null,
+        part: !ev.allDay && firstDay ? partOfDay(ev.start) : null,
         sortMs: ev.holiday ? -4 : ev.birthday ? -3 : ev.reminder ? -2 : ev.allDay || !firstDay ? -1 : ev.start,
         birthday: !!ev.birthday,
         holiday: !!ev.holiday,
         reminder: !!ev.reminder,
         badges: ev.badges,
-        span: dates.length > 1 ? { n: i + 1, of: dates.length } : null,
+        span: dates.length > 1 ? { n: i + 1, of: dates.length, key } : null,
       });
     });
-  }
+  });
   for (const d of week.dates) {
     days[d].sort((a, b) => a.sortMs - b.sortMs || a.title.localeCompare(b.title));
     days[d] = days[d].map(({ sortMs, ...row }) => row);
@@ -496,10 +506,10 @@ export function nwsInfo(text) {
   if (/drizzle/.test(t)) return { icon: 'drizzle', label: 'Drizzle' };
   if (/shower/.test(t)) return { icon: 'rain', label: 'Showers' };
   if (/rain/.test(t)) return { icon: 'rain', label: 'Rain' };
-  if (/fog|haze|smoke/.test(t)) return { icon: 'fog', label: 'Fog' };
-  if (/partly|mostly sunny|mostly clear/.test(t)) return { icon: 'partly', label: 'Partly cloudy' };
-  if (/cloud|overcast/.test(t)) return { icon: 'cloud', label: 'Cloudy' };
-  if (/sun|clear/.test(t)) return { icon: 'sun', label: 'Sunny' };
+  if (/fog|haze|smoke|mist/.test(t)) return { icon: 'fog', label: /smoke/.test(t) ? 'Smoke' : /haze/.test(t) ? 'Haze' : 'Fog' };
+  if (/partly|mostly sunny|mostly clear|a few clouds/.test(t)) return { icon: 'partly', label: 'Partly cloudy' };
+  if (/cloud|overcast/.test(t)) return { icon: 'cloud', label: /mostly cloudy/.test(t) ? 'Mostly cloudy' : 'Cloudy' };
+  if (/sun|clear|fair/.test(t)) return { icon: 'sun', label: 'Sunny' };
   return { icon: 'cloud', label: text || 'Cloudy' };
 }
 
@@ -597,7 +607,11 @@ export function parseAirNow(body, now = Date.now(), maxAgeMs = 3 * 36e5) {
 }
 
 // NWS /forecast periods (day and night halves) → the same shape.
-export function parseNws(json) {
+// NWS forecast periods → { date: { hi, lo, icon, label, rain } }. The day's
+// icon and label come from its daytime period. Late at night the forecast no
+// longer has today's daytime period, so today has only its low: such days are
+// returned with hi null for the caller to complete (weekWeather).
+export function parseNws(json, { keepPartial = false } = {}) {
   const out = {};
   for (const p of json?.properties?.periods || []) {
     const date = p.startTime.slice(0, 10); // NWS times carry the local offset
@@ -607,8 +621,29 @@ export function parseNws(json) {
     if (p.isDaytime) { o.hi = p.temperature; Object.assign(o, nwsInfo(p.shortForecast)); }
     else { o.lo = p.temperature; if (!o.icon) Object.assign(o, nwsInfo(p.shortForecast)); }
   }
-  for (const [date, o] of Object.entries(out)) if (o.hi == null || o.lo == null) delete out[date];
+  for (const [date, o] of Object.entries(out)) {
+    if (o.hi == null && o.lo == null) delete out[date];
+    else if ((o.hi == null || o.lo == null) && !keepPartial) delete out[date];
+  }
   return out;
+}
+
+// The latest NWS station observation → { temp (°F), icon, label, at } (or
+// null if it has no temperature or is older than maxAgeMs). After dark a
+// clear or partly cloudy sky gets the night icon.
+export function parseNwsObservation(json, now = Date.now(), maxAgeMs = 2 * 36e5) {
+  const p = json?.properties;
+  const t = p?.temperature;
+  if (!p || t?.value == null || !Number.isFinite(+t.value)) return null;
+  const at = Date.parse(p.timestamp);
+  if (!(now - at <= maxAgeMs)) return null;
+  const f = /degF/i.test(t.unitCode || '') ? +t.value : +t.value * 9 / 5 + 32;
+  let info = nwsInfo(p.textDescription || '');
+  if (/\/night\//.test(p.icon || '')) {
+    if (info.icon === 'sun') info = { icon: 'moon', label: 'Clear' };
+    else if (info.icon === 'partly') info = { ...info, icon: 'partly-night' };
+  }
+  return { temp: Math.round(f), ...info, at: p.timestamp };
 }
 
 // ---------------------------------------------------------------------------

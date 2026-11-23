@@ -5,7 +5,7 @@ import {
   isoDate, startOfDay, windowOf, rangeTitle, shortTime, secondsToMidnight, secondsToNextRefresh, lastRefreshAt, buildEvents,
   layoutWeek, eventDates, isBirthdayEvent, cleanLocation, shortLocation, placeName, titleWords, parseOpenMeteo,
   reminderOn, noticesFor, hiddenByReminder, titleMatches, aqiInfo, parseAirQuality, showAqi, sunsetMs, clockTime, parseNws, weatherInfo, showRain, buildSnapshot,
-  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow, REFRESH_HOURS, overnightBuild, displayStatus, buildDue,
+  parseEnphaseDaily, parseSoc, energySummary, parseOpenMeteoCurrent, parseAirCurrent, parseAirNow, parseNwsObservation, nwsInfo, REFRESH_HOURS, overnightBuild, displayStatus, buildDue,
 } from '../public/lib/week.js';
 import { weekHtml, einkDocument, esc, plainText, energyHtml, creditsHtml } from '../public/lib/view.js';
 import { sampleEnergy, sampleSnapshot } from './fixtures.js';
@@ -161,11 +161,13 @@ test('multi-day events repeat on each day; late nights do not spill over', () =>
   // A trip that runs into next week shows only its in-week days, still numbered.
   const week = windowOf('2026-11-09');
   const days = layoutWeek([{ title: 'Tahoe', location: null, badges: ['P'], allDay: true, start: '2026-11-14', end: '2026-11-17' }], week);
-  assert.deepEqual(days['2026-11-14'][0].span, { n: 1, of: 3 });
+  assert.deepEqual(days['2026-11-14'][0].span, { n: 1, of: 3, key: 0 });
   const confDays = layoutWeek([{ title: 'Summit', location: null, badges: [], ...conf }], week);
   assert.equal(confDays['2026-11-12'][0].time, '9a');
+  assert.equal(confDays['2026-11-12'][0].part, 'am');
   assert.equal(confDays['2026-11-13'][0].time, null);
-  assert.deepEqual(confDays['2026-11-13'][0].span, { n: 2, of: 2 });
+  assert.equal(confDays['2026-11-13'][0].part, null);
+  assert.deepEqual(confDays['2026-11-13'][0].span, { n: 2, of: 2, key: 0 });
 });
 
 test('weather: Open-Meteo and NWS parse to the same shape', () => {
@@ -291,7 +293,7 @@ test("the header shows today's weather, air quality and sunset", () => {
   const snap = buildSnapshot({ asOf: '2026-11-10', builtAt: 0, week, events: [],
     weather: { '2026-11-10': { icon: 'rain', label: 'Rain', hi: 58, lo: 50, rain: 70 } },
     air: { '2026-11-10': 42 }, location: { lat: 37.8044, lon: -122.2712 } });
-  const head = weekHtml(snap, { mode: 'eink' }).split('<div class="week">')[0];
+  const head = weekHtml(snap, { mode: 'eink' }).split('<div class="week"')[0];
   assert.match(head, /class="today-wx"/);
   assert.match(head, /58°/);
   assert.match(head, /70%/);
@@ -300,7 +302,7 @@ test("the header shows today's weather, air quality and sunset", () => {
   // Three rows in order: temperature, conditions, air quality; sunset after them.
   const order = ['tw-temps', 'tw-label', 'AQI 42', 'tw-sunset'].map((k) => head.indexOf(k));
   assert.ok(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), `order: ${order}`);
-  const columns = weekHtml(snap, { mode: 'eink' }).split('<div class="week">')[1];
+  const columns = weekHtml(snap, { mode: 'eink' }).split('<div class="week"')[1];
   assert.doesNotMatch(columns, /AQI/, 'AQI is only in the header');
 });
 
@@ -342,7 +344,7 @@ test('a reminder calendar (Home Tasks) shows as reminder bars, after holidays', 
 test('the AQI carries a face for its band', () => {
   const week = windowOf('2026-11-10');
   const head = (aqi) => weekHtml(buildSnapshot({ asOf: '2026-11-10', builtAt: 0, week, events: [], weather: {},
-    air: { '2026-11-10': aqi } }), { mode: 'eink' }).split('<div class="week">')[0];
+    air: { '2026-11-10': aqi } }), { mode: 'eink' }).split('<div class="week"')[0];
   const faceOf = (html) => (html.match(/<span class="aqi aqi-(\w+)/) || [])[1];
   assert.equal(faceOf(head(30)), 'good');
   assert.equal(faceOf(head(75)), 'moderate');
@@ -579,4 +581,19 @@ test("the web page's display chip: connected, asleep, missed check-ins, never se
   assert.equal(displayStatus({ last_seen: Date.parse('2026-11-19T00:10:30-08:00'), battery_pct: 86 }, Date.parse('2026-11-19T03:00:00-08:00')).state, 'asleep');
   // But it should have checked in at 12:10.
   assert.equal(displayStatus(dev('23:30:30'), Date.parse('2026-11-19T03:00:00-08:00')).state, 'late');
+});
+
+test('NWS station readings: °F, recent only, night icons', () => {
+  const now = Date.parse('2026-11-19T23:30:00-08:00');
+  const obs = (textDescription, value, timestamp = '2026-11-20T07:05:00+00:00', icon = 'https://api.weather.gov/icons/land/night/bkn') =>
+    ({ properties: { timestamp, textDescription, temperature: { unitCode: 'wmoUnit:degC', value }, icon } });
+  assert.deepEqual(parseNwsObservation(obs('Mostly Cloudy', 12), now),
+    { temp: 54, icon: 'cloud', label: 'Mostly cloudy', at: '2026-11-20T07:05:00+00:00' });
+  assert.equal(parseNwsObservation(obs('Clear', 9), now).icon, 'moon');
+  assert.equal(parseNwsObservation(obs('Partly Cloudy', 9), now).icon, 'partly-night');
+  assert.equal(parseNwsObservation(obs('Clear', 9, undefined, 'https://api.weather.gov/icons/land/day/skc'), now).icon, 'sun');
+  assert.equal(parseNwsObservation(obs('Light Rain and Mist', 11), now).label, 'Rain');
+  assert.equal(parseNwsObservation(obs('Clear', null), now), null);                          // no temperature
+  assert.equal(parseNwsObservation(obs('Clear', 9, '2026-11-20T03:00:00+00:00'), now), null); // over 2 hours old
+  assert.equal(parseNwsObservation({}, now), null);
 });

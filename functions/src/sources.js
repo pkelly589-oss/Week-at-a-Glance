@@ -4,7 +4,7 @@
 // Requirements doc: Data sources.
 
 import { createHash } from 'node:crypto';
-import { TZ, parseOpenMeteo, parseOpenMeteoCurrent, parseNws, parseAirQuality, parseAirCurrent, parseAirNow, zonedTime, parseEnphaseDaily, parseSoc, energySummary, addDays, dayShort, monthDay } from '../shared/week.js';
+import { TZ, parseOpenMeteo, parseOpenMeteoCurrent, parseNws, parseNwsObservation, parseAirQuality, parseAirCurrent, parseAirNow, zonedTime, parseEnphaseDaily, parseSoc, energySummary, addDays, dayShort, monthDay } from '../shared/week.js';
 
 // ---------------------------------------------------------------------------
 // Google Calendar
@@ -83,44 +83,64 @@ export async function openMeteo({ lat, lon }, week, fetch) {
 }
 
 // National Weather Service: forward-looking days only.
-export async function nws({ lat, lon }, fetch) {
+// The National Weather Service: the forecast for the 2.5 km grid square
+// around the house, and the latest reading from a nearby official station
+// (household location.station, else the nearest airport station, e.g. KOAK).
+// Returns { days, current }; either may be empty/null.
+export async function nws({ lat, lon, station }, fetch, now = Date.now()) {
   const get = async (url) => {
     const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/geo+json' } });
     if (!res.ok) throw new Error(`NWS ${res.status}`);
     return res.json();
   };
   const point = await get(`https://api.weather.gov/points/${(+lat).toFixed(4)},${(+lon).toFixed(4)}`);
-  return parseNws(await get(point.properties.forecast));
+  const [forecast, current] = await Promise.all([
+    get(point.properties.forecast).then((j) => parseNws(j, { keepPartial: true })),
+    (async () => {
+      let id = station;
+      if (!id) {
+        const list = await get(point.properties.observationStations);
+        const ids = (list.features || []).map((f) => f.properties?.stationIdentifier).filter(Boolean);
+        id = ids.find((s) => /^K[A-Z0-9]{3}$/.test(s)) || ids[0];
+      }
+      if (!id) return null;
+      const obs = parseNwsObservation(await get(`https://api.weather.gov/stations/${encodeURIComponent(id)}/observations/latest`), now);
+      return obs && { ...obs, source: 'nws', station: id };
+    })().catch((e) => { console.warn('NWS observation failed', e.message); return null; }),
+  ]);
+  return { days: forecast, current };
 }
 
 // Weather for every day of the week, as well as it can be had:
-// 1. Open-Meteo for the whole week;
-// 2. if that fails, the National Weather Service for the days ahead;
+// 1. the National Weather Service forecast;
+// 2. Open-Meteo for any day NWS doesn't cover (or for all, if NWS is down);
 // 3. any day still missing keeps what the previous snapshot had for it.
-// Days already past that come from the previous snapshot are normal (NWS has no
-// past days); only a stale forecast for today or later earns a warning.
-// `current` (conditions now) comes only from Open-Meteo; without it the header
-// shows today's forecast instead.
-export async function weekWeather(location, week, asOf, previousDays, fetch) {
+// Late at night NWS has only today's low; today's high and sky then come from
+// the earlier snapshot (which had NWS's daytime forecast), else Open-Meteo.
+// `current` (conditions now) is the NWS station reading, else Open-Meteo's
+// modelled current conditions; without either the header shows today's forecast.
+export async function weekWeather(location, week, asOf, previousDays, fetch, now = Date.now()) {
   const warnings = [];
-  let got = {}, current = null;
-  try {
-    ({ days: got, current } = await openMeteo(location, week, fetch));
-  } catch (e1) {
-    try {
-      got = await nws(location, fetch);
-    } catch (e2) {
-      warnings.push('Weather service unreachable');
-      console.warn('Weather failed', e1.message, e2.message);
-    }
-  }
+  const [n, o] = await Promise.all([
+    nws(location, fetch, now).catch((e) => { console.warn('NWS failed', e.message); return null; }),
+    openMeteo(location, week, fetch).catch((e) => { console.warn('Open-Meteo failed', e.message); return null; }),
+  ]);
+  if (!n && !o) warnings.push('Weather service unreachable');
   const out = {};
   const kept = [];
   for (const date of week.dates) {
-    if (got[date]) out[date] = got[date];
-    else if (previousDays?.[date]) { out[date] = { ...previousDays[date], stale: true }; kept.push(date); }
+    const fromNws = n?.days?.[date];
+    const prev = previousDays?.[date];
+    if (fromNws && fromNws.hi != null && fromNws.lo != null) out[date] = fromNws;
+    else if (fromNws && prev && prev.source === 'nws' && prev.hi != null) {
+      // Today, late at night: keep the daytime part from earlier, NWS's low.
+      const { stale, ...p } = prev;
+      out[date] = { ...p, lo: fromNws.lo ?? p.lo, rain: Math.max(p.rain ?? 0, fromNws.rain ?? 0) };
+    } else if (o?.days?.[date]) out[date] = o.days[date];
+    else if (prev) { out[date] = { ...prev, stale: true }; kept.push(date); }
   }
   if (kept.some((d) => d >= asOf) && !warnings.length) warnings.push('Some weather is from an earlier forecast');
+  const current = n?.current || (o?.current ? { ...o.current, source: 'open-meteo' } : null);
   return { weather: out, current, warnings };
 }
 

@@ -19,8 +19,13 @@ Firestore, no secrets and no email addresses in the repository.
 - **One list per day.** No hour grid. In each day:
   holidays first (outlined, with a star), then birthdays (dashed outline, with
   a cake), then reminders, then all-day events,
-  then timed events by start time. Multi-day events repeat on each day with
-  "Day 2 of 3"; a late night that runs past midnight stays on its first day.
+  then timed events by start time under **AM** (before noon) and **PM**; a
+  heading shows only when it has events. A late night that runs past midnight stays on its first day.
+- **Multi-day events span the columns** (e-ink and the web page on a
+  computer): one bar across the days they cover, under the weather, stacked
+  when they overlap; a dashed end means the event started before today or
+  runs past the last day shown. On a phone, where days are stacked, they
+  repeat on each day with "Day 2 of 3".
 - **Each event once.** Invites you're both on, copies made by hand (same title
   and start), and the same occasion entered by each of you in different words
   ("My Anniversary!!" and "💍Anniversary": same start, one title's words all in
@@ -41,7 +46,8 @@ Firestore, no secrets and no email addresses in the repository.
 - **Weather** for each day: icon, high/low in °F, and rain chance from 20%.
   Every day's weather block is the same height, so the event lists line up.
 - **Now, at the top:** beside the date, the conditions at the last update:
-  temperature, sky (a moon after dark) and the US AQI measured by AirNow's
+  temperature and sky measured at the nearest official weather station (the
+  Oakland airport, KOAK; a moon after dark) and the US AQI measured by AirNow's
   nearest monitors (Open-Meteo's forecast AQI if AirNow has no recent reading),
   with a face for its band
   (smile for Good … mask for Hazardous, a black chip from 101); and to the
@@ -57,10 +63,11 @@ Firestore, no secrets and no email addresses in the repository.
 - **Household reminders** as black bars at the top of the day: fixed routines
   such as "Bins out tonight" or "Street sweeping today" (their calendar copies
   are hidden), and everything on a calendar marked `as_reminders` (Home Tasks).
-- **E-ink:** today's column is inverted, a crowded day
+- **E-ink:** today's column is wider than the others (1.4×) and its heading
+  inverted; event text is large enough to read across the hall; a crowded day
   ends with "+3 more", and emoji are dropped (the display has no emoji font).
 - **Web page:** stacked days on a phone, today first,
-  seven columns on a computer, coloured badges, light/dark, add to home screen.
+  seven columns on a computer (today's wider, multi-day bars), coloured badges, light/dark, add to home screen.
 - **Display status** in the web page's top bar: "Display connected" (green)
   while it checks in on schedule, "asleep until 7 AM" overnight, or "last
   seen …" (amber) if it has missed a check-in, plus its battery level (red
@@ -75,7 +82,7 @@ Firestore, no secrets and no email addresses in the repository.
 ```
 Pete's calendar ──┐
 David's calendar ─┼─► nightlyBuild (every 30 min 6:55–23:25, and 0:05 PT) ──► weeks/{first day} ──► web page
-Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
+NWS / Open-Meteo ─┘    merge, dedup, render PNG     status/latest
                                    │
                                          └─► Storage PNG ──► /api/display ──► TRMNL X (wakes 00:00, 12:00)
 ```
@@ -98,15 +105,19 @@ Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
   median of the nearby sites, and the highest of those, as AirNow reports
   the overall AQI. If AirNow fails, its key is off, or its reading is over 3 hours
   old, Open-Meteo's air-quality forecast (CAMS) stands in, with no warning.
-- **Weather:** Open-Meteo (mainly NOAA's models for the US) for each day's
-  forecast and the current temperature and sky; the National Weather Service
-  if Open-Meteo is down.
+- **Weather:** the National Weather Service's official forecast for the
+  2.5 km grid square around the house (high, low, sky, rain chance), and the
+  latest reading from the nearest airport station for "now" (set
+  `location.station` in the household settings to pick another station).
+  Open-Meteo fills any day NWS doesn't cover (the 7th day, or everything if
+  NWS is down), and stands in for "now" if the station's reading is over 2
+  hours old. Late at night NWS lists only tonight, so today keeps the daytime
+  forecast it had earlier.
 - **Sunset** is calculated from the home's coordinates (within a couple of
   minutes of published times), so it shows even when the weather services
   are down.
-- **Weather:** Open-Meteo for the whole week. If it's down or rate-limited,
-  the National Weather Service covers the days ahead, and any day still missing
-  keeps the previous night's forecast.
+- **Weather:** NWS, then Open-Meteo for any gaps; any day still missing keeps
+  the previous update's forecast, marked as earlier.
 
 ### Files
 
@@ -119,7 +130,7 @@ Open-Meteo / NWS ─┘    merge, dedup, render PNG     status/latest
 | `public/eink/waiting.png` | What the display shows before the first build |
 | `functions/index.js` | Wires the functions to Firebase: schedule, callable, HTTP, secrets |
 | `functions/src/build.js` | One build: read, merge, store, render, clean up |
-| `functions/src/sources.js` | Google Calendar, Open-Meteo and NWS requests |
+| `functions/src/sources.js` | Google Calendar, NWS, Open-Meteo, AirNow and Enphase requests |
 | `functions/src/render.js` | Headless Chrome screenshot → 16-grey PNG |
 | `functions/src/device.js` | The TRMNL BYOS API: `/api/setup`, `/api/display`, `/api/log`, `/api/image` |
 | `scripts/connect-google.mjs` | One-time Google sign-in that stores the token in Secret Manager |

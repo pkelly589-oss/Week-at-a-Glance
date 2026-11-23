@@ -109,7 +109,7 @@ export async function runBuild({ db, bucket, fetch, secrets, now = Date.now(), a
   let enphase = null, energyWarnings = [];
   try { enphase = enphaseConfig(secrets.enphase); } catch (e) { energyWarnings = [e.message]; }
   const [wx, aq, airNow, en] = await Promise.all([
-    weekWeather(household.location, week, asOf, previousWeather, fetch),
+    weekWeather(household.location, week, asOf, previousWeather, fetch, now),
     weekAir(household.location, week, asOf, previousAir, fetch),
     airNowCurrent(secrets.airnow, household.location, fetch, now),
     homeEnergy(enphase, db, asOf, previousEnergy, fetch, now),

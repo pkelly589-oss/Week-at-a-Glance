@@ -91,6 +91,12 @@ assert.match(await page.textContent('#credits'), /Air quality now: AirNow \(EPA\
 assert.match(await page.textContent('#device-chip'), /Display last seen Tue 11:00 AM·14%/);
 assert.equal(await page.locator('#device-chip .dc-batt.low').count(), 1);
 
+// Multi-day events: on the phone, listed in each of their days ("Day 2 of 3").
+assert.ok(await page.locator('.day[data-date="2026-11-14"] .ev-span-copy', { hasText: 'Tahoe weekend' }).isVisible());
+assert.equal(await page.locator('.span-bar').first().isVisible(), false);
+// Timed events sit under AM and PM.
+assert.deepEqual(await page.locator('.day.today .part-head').allTextContents(), ['AM', 'PM']);
+
 // 4. Low-battery banner.
 assert.match(await page.textContent('#banners'), /battery is at about 14%/);
 await shot(page, 'web-2-phone');
@@ -103,6 +109,11 @@ const cols = await page.evaluate(() => getComputedStyle(document.querySelector('
 const wxHeights = await page.evaluate(() => [...document.querySelectorAll('.day .wx')].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().height));
 assert.equal(new Set(wxHeights).size, 1, `weather boxes differ: ${wxHeights}`);
 assert.equal(cols, 7);
+// Desktop: multi-day events are bars across their columns, and today's column is the widest.
+assert.deepEqual(await page.locator('.span-bar .title').allTextContents(), ['Conference: AI for Science Summit', 'Tahoe weekend']);
+assert.equal(await page.locator('.ev-span-copy').first().isVisible(), false);
+const widths = await page.evaluate(() => [...document.querySelectorAll('.col')].map((c) => c.getBoundingClientRect().width));
+assert.ok(widths[0] > widths[1] * 1.3, `today's column: ${widths}`);
 await shot(page, 'web-3-desktop', false);
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: 'test-results/web-3-desktop-top.png', clip: { x: 0, y: 0, width: 1440, height: 140 } });

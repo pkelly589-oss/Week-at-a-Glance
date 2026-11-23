@@ -121,7 +121,49 @@ function eventHtml(ev, mode) {
     `<span class="title">${esc(mode === 'eink' ? plainText(ev.title) : ev.title)}</span>${loc}${span}</li>`;
 }
 
-export function dayHtml(day, { today, mode }) {
+// Multi-day events seen on two or more of the days shown become bars across
+// those columns (on the e-ink and the desktop page), stacked in lanes so they
+// don't overlap. Returns [{ key, first, last, lane, ev }], columns from 0.
+export function spanBars(days) {
+  const byKey = new Map();
+  days.forEach((d, c) => (d.events || []).forEach((e) => {
+    const k = e.span?.key;
+    if (k == null || e.holiday || e.reminder) return;
+    const s = byKey.get(k);
+    if (s) s.last = c; else byKey.set(k, { key: k, first: c, last: c, ev: e });
+  }));
+  const bars = [...byKey.values()].filter((b) => b.last > b.first)
+    .sort((a, b) => a.first - b.first || (b.last - b.first) - (a.last - a.first));
+  const laneEnds = [];
+  for (const b of bars) {
+    let lane = laneEnds.findIndex((end) => end < b.first);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = b.last;
+    b.lane = lane;
+  }
+  return bars;
+}
+
+function barHtml(b, mode) {
+  const e = b.ev;
+  const title = esc(mode === 'eink' ? plainText(e.title) : e.title);
+  const time = e.time ? `<span class="time">${esc(e.time)}</span>` : '';
+  const loc = e.location ? `<span class="loc">${PIN}<span>${esc(e.location)}</span></span>` : '';
+  const cont = `${e.span.n > 1 ? ' from-before' : ''}${e.span.n + (b.last - b.first) < e.span.of ? ' runs-on' : ''}`;
+  return `<li class="span-bar${cont}" style="grid-column:${b.first + 1} / span ${b.last - b.first + 1};grid-row:${b.lane + 2}">` +
+    `<span class="bar-main">${time}<span class="title">${title}</span>${loc}</span>${badgesHtml(e.badges)}</li>`;
+}
+
+const PARTS = [['am', 'AM'], ['pm', 'PM']];
+// Snapshots built before the switch to AM / PM said morning / afternoon / evening.
+const partOf = (e) => (e.part === 'morning' || !e.part ? 'am' : e.part === 'am' ? 'am' : 'pm');
+
+// One day: the head and weather (day-top), then the body: holidays,
+// birthdays and reminders; all-day events; then timed events under AM and PM
+// (only the parts that have events). Rows of a multi-day
+// event drawn as a bar are kept as copies for the stacked phone layout, where
+// there are no columns to span (hidden where the bars show).
+export function dayHtml(day, { today, mode, col = 1, barKeys = new Set(), bodyRow = null }) {
   const past = day.date < today, isToday = day.date === today;
   const cls = `day${past ? ' past' : ''}${isToday ? ' today' : ''}`;
   const holidays = day.events.filter((e) => e.holiday);
@@ -130,23 +172,50 @@ export function dayHtml(day, { today, mode }) {
   const calReminders = day.events.filter((e) => e.reminder)
     .map((e) => ({ text: e.time ? `${e.time} · ${e.title}` : e.title, when: 'calendar' }));
   const others = day.events.filter((e) => !e.holiday && !e.reminder && !e.birthday);
-  const events = others.length
-    ? `<ul class="events">${others.map((e) => eventHtml(e, mode)).join('')}</ul>`
-    : (holidays.length || birthdays.length || day.notices?.length || calReminders.length ? '' : '<p class="empty">Nothing scheduled</p>');
-  const notices = [...(day.notices || []), ...calReminders];
-  const top = holidaysHtml(holidays) + birthdaysHtml(birthdays, mode) + noticesHtml(notices);
-  const inner = `<header class="day-head"><span class="dow">${esc(day.dow)}</span>` +
-    `<span class="date">${esc(day.label)}</span>${isToday ? '<span class="today-tag">Today</span>' : ''}</header>` +
-    weatherHtml(day.weather, null, mode) + top + events;
-  // On the web, past days fold away (Web view: "past days collapsed by default").
-  if (mode === 'web' && past) {
-    const n = day.events.length;
-    return `<section class="${cls}" data-date="${esc(day.date)}"><details class="past-fold">` +
-      `<summary><span class="dow">${esc(day.dow)}</span> <span class="date">${esc(day.label)}</span>` +
-      `<span class="muted"> · ${n ? `${n} event${n > 1 ? 's' : ''}` : 'nothing scheduled'}</span></summary>` +
-      `<div class="past-body">${weatherHtml(day.weather, null, mode)}${top}${events}</div></details></section>`;
+  const isCopy = (e) => e.span?.key != null && barKeys.has(e.span.key);
+  const row = (e) => isCopy(e) ? eventHtml(e, mode).replace('<li class="ev', '<li class="ev-span-copy ev') : eventHtml(e, mode);
+  const untimed = others.filter((e) => !e.time);
+  const timed = others.filter((e) => e.time);
+  let lists = untimed.length ? `<ul class="events">${untimed.map(row).join('')}</ul>` : '';
+  const hasParts = timed.some((e) => e.part);
+  if (hasParts) {
+    for (const [part, label] of PARTS) {
+      const rows = timed.filter((e) => partOf(e) === part);
+      if (rows.length) lists += `<div class="part part-${part}"><h3 class="part-head">${label}</h3><ul class="events">${rows.map(row).join('')}</ul></div>`;
+    }
+  } else if (timed.length) {
+    lists += `<ul class="events">${timed.map(row).join('')}</ul>`;
   }
-  return `<section class="${cls}" data-date="${esc(day.date)}">${inner}</section>`;
+  const own = others.filter((e) => !isCopy(e)).length;
+  const notices = [...(day.notices || []), ...calReminders];
+  const nothing = !own && !others.length && !holidays.length && !birthdays.length && !notices.length;
+  const top = holidaysHtml(holidays) + birthdaysHtml(birthdays, mode) + noticesHtml(notices);
+  const head = `<header class="day-head"><span class="dow">${esc(day.dow)}</span>` +
+    `<span class="date">${esc(day.label)}</span>${isToday ? '<span class="today-tag">Today</span>' : ''}</header>`;
+  return `<section class="${cls}" data-date="${esc(day.date)}" style="--c:${col}">` +
+    `<div class="day-top">${head}${weatherHtml(day.weather, null, mode)}</div>` +
+    `<div class="day-body"${bodyRow ? ` style="grid-row:${bodyRow} / -1"` : ''}>${top}${lists}${nothing ? '<p class="empty">Nothing scheduled</p>' : ''}</div></section>`;
+}
+
+// The seven columns. In the column layout (e-ink, desktop) the grid's rows
+// are: day heads and weather, one row per lane of multi-day bars, then the
+// day bodies; a `col` element per column draws its rule and today's outline.
+function weekGridHtml(days, { today, mode }) {
+  const bars = spanBars(days);
+  const lanes = bars.reduce((n, b) => Math.max(n, b.lane + 1), 0);
+  const barKeys = new Set(bars.map((b) => b.key));
+  const rows = `auto ${'auto '.repeat(lanes)}minmax(0, 1fr)`;
+  return `<div class="week" style="--rows:${rows};--body-row:${lanes + 2}">` +
+    days.map((d, i) => `<div class="col${d.date === today ? ' col-today' : ''}" style="grid-column:${i + 1}" aria-hidden="true"></div>`).join('') +
+    // A day's body starts just under the lowest bar over that day, so a day
+    // with no bar loses no space to the bar rows.
+    days.map((d, i) => {
+      const over = bars.filter((b) => b.first <= i && i <= b.last);
+      const bodyRow = 2 + (over.length ? Math.max(...over.map((b) => b.lane)) + 1 : 0);
+      return dayHtml(d, { today, mode, col: i + 1, barKeys, bodyRow });
+    }).join('') +
+    (bars.length ? `<ul class="spans" aria-label="Multi-day events">${bars.map((b) => barHtml(b, mode)).join('')}</ul>` : '') +
+    '</div>';
 }
 
 // Today's weather beside the date in the header: icon, high/low, conditions,
@@ -245,7 +314,7 @@ export function weekHtml(snap, { mode = 'web', today = snap.as_of } = {}) {
     todayHtml(snap.days.find((d) => d.date === today), mode, snap) +
     `<span class="updated">Updated ${esc(stampLabel(snap.built_at))}</span></div></header>` +
     (mode === 'web' ? energyHtml(snap.energy) : '') +
-    `<div class="week">${snap.days.map((d) => dayHtml(d, { today, mode })).join('')}</div>` +
+    weekGridHtml(snap.days, { today, mode }) +
     (mode === 'eink' ? energyHtml(snap.energy) : '');
 }
 
@@ -264,7 +333,11 @@ export function creditsHtml(snap) {
   } else {
     air = `${an} (EPA), or ${om} (CAMS) when AirNow has no recent reading`;
   }
-  return `Weather: ${om} and the National Weather Service. Air quality now: ${air}.`;
+  const nws = '<a href="https://www.weather.gov/">National Weather Service</a>';
+  let now = '';
+  if (cur?.source === 'nws' && cur.station) now = `; now: ${esc(cur.station)} station reading`;
+  else if (cur?.source === 'open-meteo') now = `; now: ${om} (no recent station reading)`;
+  return `Weather: ${nws} forecast${now}, with ${om} filling any gaps. Air quality now: ${air}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,15 +372,18 @@ if (en) {
   let size = parseFloat(getComputedStyle(en).fontSize);
   while (en.scrollWidth > en.clientWidth + 1 && size > 22) { size -= 1; en.style.fontSize = size + 'px'; }
 }
-for (const day of document.querySelectorAll('.day')) {
-  const list = day.querySelector('.events'); if (!list) continue;
-  const rows = [...list.children]; let hidden = 0;
-  const more = document.createElement('li'); more.className = 'more';
-  const fits = () => day.scrollHeight <= day.clientHeight + 1;
+// Each day's body: drop event rows from the bottom (evening first) until it
+// fits, say how many are hidden, and drop a time-of-day heading left empty.
+for (const body of document.querySelectorAll('.day-body')) {
+  const rows = [...body.querySelectorAll('.ev:not(.ev-span-copy)')]; let hidden = 0;
+  const more = document.createElement('p'); more.className = 'more';
+  const fits = () => body.scrollHeight <= body.clientHeight + 1;
   while (!fits() && hidden < rows.length) {
-    rows[rows.length - 1 - hidden].remove(); hidden++;
+    const r = rows[rows.length - 1 - hidden], part = r.closest('.part');
+    r.remove(); hidden++;
+    if (part && !part.querySelector('.ev')) part.remove();
     more.textContent = '+' + hidden + ' more';
-    if (!more.isConnected) list.append(more);
+    if (!more.isConnected) body.append(more);
   }
 }
 document.body.dataset.ready = '1';
@@ -340,11 +416,27 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .sunset-icon { width: 64px; height: 64px; flex: none; }
 .tw-sun-label { display: block; }
 .updated { font-size: 20px; color: #555; }
-.week { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); min-height: 0; }
-.day { display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 0 14px 0;
-  border-right: 2px solid #000; }
-.day:last-child { border-right: 0; }
-.day-head { display: flex; align-items: baseline; gap: 10px; padding: 16px 12px 12px; margin: 0 -14px; }
+.week { flex: 1; display: grid; min-height: 0;
+  grid-template-columns: minmax(0, 1.4fr) repeat(6, minmax(0, 1fr)); grid-template-rows: var(--rows); }
+.col { grid-row: 1 / -1; border-right: 2px solid #000; }
+.col:nth-child(7) { border-right: 0; }
+.day { display: contents; }
+.day-top { grid-column: var(--c); grid-row: 1; padding: 0 12px; position: relative; }
+.day-body { grid-column: var(--c); grid-row: var(--body-row) / -1; min-height: 0; overflow: hidden; padding: 0 12px 6px;
+  display: flex; flex-direction: column; position: relative; }
+.day-head { display: flex; align-items: baseline; gap: 10px; padding: 16px 12px 12px; margin: 0 -12px; }
+.ev-span-copy { display: none !important; }
+.spans { display: contents; list-style: none; }
+.span-bar { position: relative; margin: 10px 10px 0; border: 3px solid #000; border-radius: 8px; padding: 6px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; background: #fff; }
+.span-bar.from-before { border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.span-bar.runs-on { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.bar-main { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+.span-bar .title { font-size: 32px; font-weight: 700; -webkit-line-clamp: 1; }
+.span-bar .loc { font-size: 25px; }
+.part-head { font-size: 21px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #444;
+  padding-top: 14px; border-bottom: 2px solid #bbb; padding-bottom: 3px; }
+.part .events { padding-top: 10px; }
 .dow { font-size: 40px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
 .date { font-size: 32px; }
 .today-tag { display: none; }
@@ -378,20 +470,21 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .drop { width: 20px; height: 20px; }
 .wx-none { font-size: 24px; color: #555; flex-direction: column; align-items: flex-start; justify-content: center; }
 .events { list-style: none; display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+.more { padding-top: 10px; }
 .ev { display: flex; flex-direction: column; gap: 3px; }
-.ev-top { display: flex; justify-content: space-between; align-items: center; min-height: 34px; }
-.time { font-size: 27px; font-weight: 700; }
-.time.allday { font-size: 21px; text-transform: uppercase; letter-spacing: 0.5px; }
+.ev-top { display: flex; justify-content: space-between; align-items: center; min-height: 38px; }
+.time { font-size: 30px; font-weight: 700; }
+.time.allday { font-size: 23px; text-transform: uppercase; letter-spacing: 0.5px; }
 .ev-allday { background: #e4e4e4; padding: 6px 8px 8px; border-radius: 6px; }
-.title { font-size: 30px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2;
+.title { font-size: 33px; line-height: 1.18; hyphens: auto; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.span { color: #555; font-size: 22px; }
-.loc { display: flex; align-items: center; gap: 4px; font-size: 24px; color: #444; min-width: 0; }
+.span { color: #555; font-size: 24px; }
+.loc { display: flex; align-items: center; gap: 4px; font-size: 26px; color: #444; min-width: 0; }
 .loc > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pin { width: 20px; height: 20px; flex: none; }
+.pin { width: 22px; height: 22px; flex: none; }
 .past .loc { color: #a0a0a0; }
 .badges { display: flex; gap: 5px; }
-.badge { font-size: 21px; font-weight: 700; width: 34px; height: 34px; border: 2.5px solid #000;
+.badge { font-size: 23px; font-weight: 700; width: 38px; height: 38px; border: 2.5px solid #000;
   border-radius: 6px; display: flex; align-items: center; justify-content: center; line-height: 1; }
 .badge-d { background: #000; color: #fff; }
 .more { font-size: 26px; font-weight: 700; color: #333; }

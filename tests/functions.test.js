@@ -46,15 +46,23 @@ const OPEN_METEO = {
 const AIR_QUALITY = { hourly: {
   time: ['2026-11-10T08:00', '2026-11-10T16:00', '2026-11-12T12:00'], us_aqi: [40, 72, 130],
 }, current: { time: '2026-11-09T23:00', us_aqi: 33 } };
+// The NWS forecast as at 11:55pm Monday: from "Overnight" through Sunday
+// night (Monday Nov 16 is beyond it, so Open-Meteo fills that day).
+const nwsDay = (date, hi, lo, sky, pop = 10) => [
+  { startTime: `${date}T06:00:00-08:00`, isDaytime: true, temperature: hi, shortForecast: sky, probabilityOfPrecipitation: { value: pop } },
+  { startTime: `${date}T18:00:00-08:00`, isDaytime: false, temperature: lo, shortForecast: sky, probabilityOfPrecipitation: { value: pop } },
+];
 const NWS_FORECAST = { properties: { periods: [
-  { startTime: '2026-11-10T06:00:00-08:00', isDaytime: true, temperature: 61, shortForecast: 'Cloudy', probabilityOfPrecipitation: { value: 10 } },
-  { startTime: '2026-11-10T18:00:00-08:00', isDaytime: false, temperature: 50, shortForecast: 'Cloudy', probabilityOfPrecipitation: { value: 10 } },
-  { startTime: '2026-11-11T06:00:00-08:00', isDaytime: true, temperature: 56, shortForecast: 'Rain', probabilityOfPrecipitation: { value: 90 } },
-  { startTime: '2026-11-11T18:00:00-08:00', isDaytime: false, temperature: 49, shortForecast: 'Rain', probabilityOfPrecipitation: { value: 70 } },
+  ...nwsDay('2026-11-10', 61, 50, 'Mostly Cloudy'), ...nwsDay('2026-11-11', 56, 49, 'Light Rain Likely', 90),
+  ...nwsDay('2026-11-12', 57, 48, 'Chance Light Rain', 40), ...nwsDay('2026-11-13', 60, 46, 'Partly Sunny'),
+  ...nwsDay('2026-11-14', 63, 45, 'Sunny', 0), ...nwsDay('2026-11-15', 62, 46, 'Mostly Sunny', 0),
 ] } };
+// The airport station's latest reading: 12°C, clear, at night.
+const KOAK = { properties: { timestamp: '2026-11-10T07:53:00+00:00', textDescription: 'Clear',
+  temperature: { unitCode: 'wmoUnit:degC', value: 12.2 }, icon: 'https://api.weather.gov/icons/land/night/skc?size=medium' } };
 
 // A fake network. Options turn individual services off.
-function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false, airDown = false, enphaseDown = false, enphaseExpired = false, airNowDown = false, airNowOld = false } = {}) {
+function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false, nwsDown = false, stationOld = false, airDown = false, enphaseDown = false, enphaseExpired = false, airNowDown = false, airNowOld = false } = {}) {
   const cals = Object.fromEntries(calendarSources().map((c) => [c.id, c.events]));
   const calls = [];
   const fn = async (url, init = {}) => {
@@ -89,8 +97,16 @@ function fakeFetch({ badToken = false, davidDown = false, openMeteoDown = false,
     }
     if (u.host === 'api.open-meteo.com') return openMeteoDown ? json({ error: true, reason: 'Daily API request limit exceeded' }, 429) : json(OPEN_METEO);
     if (u.host === 'air-quality-api.open-meteo.com') return airDown ? json({ error: true, reason: 'down' }, 503) : json(AIR_QUALITY);
-    if (u.pathname.startsWith('/points/')) return json({ properties: { forecast: 'https://api.weather.gov/gridpoints/MTR/1,1/forecast' } });
+    if (u.host === 'api.weather.gov' && nwsDown) return json({ title: 'Service unavailable' }, 503);
+    if (u.pathname.startsWith('/points/')) return json({ properties: {
+      forecast: 'https://api.weather.gov/gridpoints/MTR/1,1/forecast',
+      observationStations: 'https://api.weather.gov/gridpoints/MTR/1,1/stations' } });
     if (u.pathname.endsWith('/forecast')) return json(NWS_FORECAST);
+    if (u.pathname.endsWith('/stations')) return json({ features: [
+      { properties: { stationIdentifier: 'OAMC1' } }, { properties: { stationIdentifier: 'KOAK' } }] });
+    if (u.pathname === '/stations/KOAK/observations/latest') {
+      return json(stationOld ? { properties: { ...KOAK.properties, timestamp: '2026-11-10T03:00:00+00:00' } } : KOAK);
+    }
     throw new Error(`unexpected ${url}`);
   };
   fn.calls = calls;
@@ -139,7 +155,9 @@ test('a build stores the merged week, the image and a good status', async () => 
   assert.equal(tue.events.filter((e) => e.title.startsWith('Dinner')).length, 1); // de-duplicated
   assert.ok(!tue.events.some((e) => e.title === 'Physical therapy'));          // private
   assert.ok(!week.days.some((d) => d.events.some((e) => /temescal|south berkeley/i.test(e.title))), 'hide_events');
-  assert.equal(tue.weather.hi, 60);
+  assert.equal(tue.weather.hi, 61);                // the NWS forecast
+  assert.equal(tue.weather.source, 'nws');
+  assert.equal(week.days.at(-1).weather.source, 'open-meteo'); // beyond NWS's forecast
   assert.equal(dinner.location, 'Nido');
 
   // Shared calendars: no badges unless someone is on the invite; home address hidden.
@@ -199,16 +217,25 @@ test('a revoked Google token fails the build and is flagged on the page', async 
   assert.equal(status.week_id, '2026-11-10'); // the last good window is still pointed at
 });
 
-test('if Open-Meteo is down, NWS covers the days ahead and the rest keep their earlier forecast', async () => {
-  await build({ asOf: '2026-11-09', now: NOW - 864e5 }); // Monday's build, with Open-Meteo up
-  const fetch = fakeFetch({ openMeteoDown: true });
-  const snap = await build({ fetch });
-  const byDate = Object.fromEntries(snap.days.map((d) => [d.date, d.weather]));
-  assert.equal(byDate['2026-11-10'].source, 'nws');
-  assert.equal(byDate['2026-11-11'].label, 'Rain');
-  assert.equal(byDate['2026-11-13'].stale, true);        // beyond NWS here: kept, and…
-  assert.deepEqual(snap.warnings, ['Some weather is from an earlier forecast']); // …flagged
-  assert.ok(fetch.calls.some((u) => u.includes('api.weather.gov')));
+test('weather: NWS first; Open-Meteo for what NWS lacks or if it is down; else the earlier forecast', async () => {
+  // NWS down: Open-Meteo for every day, and for "now".
+  const om = await build({ fetch: fakeFetch({ nwsDown: true }) });
+  assert.ok(om.days.every((d) => d.weather.source === 'open-meteo'));
+  assert.equal(om.current.source, 'open-meteo');
+  // Both down: each day keeps the earlier forecast, flagged.
+  const both = await build({ fetch: fakeFetch({ nwsDown: true, openMeteoDown: true }), now: NOW + 36e5 });
+  assert.ok(both.days.every((d) => d.weather.stale));
+  assert.deepEqual(both.warnings, ['Weather service unreachable']);
+});
+
+test('weather late at night: NWS has only tonight, so today keeps its daytime forecast from earlier', async () => {
+  const day = await build();                       // NWS forecast with Tuesday's daytime period
+  assert.equal(day.days[0].weather.hi, 61);
+  const tonight = { properties: { periods: NWS_FORECAST.properties.periods.slice(1) } }; // "Tonight" first
+  const fetch = fakeFetch();
+  const late = async (url, init) => (String(url).endsWith('/forecast') ? json(tonight) : fetch(url, init));
+  const snap = await build({ fetch: late, now: NOW + 36e5 });
+  assert.deepEqual([snap.days[0].weather.hi, snap.days[0].weather.lo, snap.days[0].weather.source], [61, 50, 'nws']);
 });
 
 test('snapshots and images older than 14 days are deleted', async () => {
@@ -319,10 +346,13 @@ test('air quality down: earlier values are kept, with a warning only if today ha
   assert.deepEqual(fresh.warnings, ['Air quality unavailable']);
 });
 
-test('the header gets the conditions at build time: temperature and sky (Open-Meteo), AQI (AirNow)', async () => {
+test('the header gets the conditions at build time: the station reading (NWS) and the AQI (AirNow)', async () => {
   const week = await build();
-  assert.deepEqual(week.current, { temp: 53, icon: 'moon', label: 'Clear', at: '2026-11-09T23:45',
-    aqi: 56, aqi_source: 'airnow', aqi_area: 'Oakland', aqi_at: Date.parse('2026-11-09T23:00:00-08:00') }); // the worst pollutant, PM2.5: median of 58 and 54
+  assert.deepEqual(week.current, { temp: 54, icon: 'moon', label: 'Clear', at: '2026-11-10T07:53:00+00:00', source: 'nws', station: 'KOAK',
+    aqi: 56, aqi_source: 'airnow', aqi_area: 'Oakland', aqi_at: Date.parse('2026-11-09T23:00:00-08:00') }); // PM2.5: median of 58 and 54
+  // A station reading over 2 hours old: Open-Meteo's modelled conditions instead.
+  const old = await build({ fetch: fakeFetch({ stationOld: true }) });
+  assert.deepEqual([old.current.temp, old.current.source], [53, 'open-meteo']);
   // AirNow down, or its reading over 3 hours old: Open-Meteo's modelled AQI, no warning.
   for (const opts of [{ airNowDown: true }, { airNowOld: true }]) {
     const snap = await build({ fetch: fakeFetch(opts) });
@@ -334,8 +364,8 @@ test('the header gets the conditions at build time: temperature and sky (Open-Me
   const off = fakeFetch();
   assert.equal((await build({ fetch: off, secrets: { ...SECRETS, airnow: 'off' } })).current.aqi, 33);
   assert.equal(off.calls.filter((c) => c.includes('airnowapi')).length, 0);
-  // No sky either: just the AQI, and the header shows today's forecast.
-  const noSky = await build({ fetch: fakeFetch({ openMeteoDown: true }), now: NOW + 36e5 });
+  // No sky at all: just the AQI, and the header shows today's forecast.
+  const noSky = await build({ fetch: fakeFetch({ openMeteoDown: true, nwsDown: true }), now: NOW + 36e5 });
   assert.deepEqual(noSky.current, { aqi: 56, aqi_source: 'airnow', aqi_area: 'Oakland', aqi_at: Date.parse('2026-11-09T23:00:00-08:00') });
 });
 

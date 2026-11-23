@@ -161,6 +161,8 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--pete); ou
 
 /* ---- Days: stacked on phones ------------------------------------------- */
 .week { display: flex; flex-direction: column; gap: 12px; }
+/* Column rules and multi-day bars belong to the column layout only. */
+.col, .spans { display: none; }
 .day { background: var(--surface); border-radius: var(--radius); padding: 0 14px 12px; scroll-margin-top: 12px;
   border: 1px solid var(--line); }
 .day-head { display: flex; align-items: baseline; gap: 8px; padding: 12px 0 6px; }
@@ -204,12 +206,17 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--pete); ou
 .ev { border-radius: 8px; }
 .ev { display: grid; grid-template-columns: 1fr; padding: 6px 0; }
 .ev-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.time { font-weight: 700; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-.time.allday { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
-.title { display: block; font-size: 1rem; overflow-wrap: anywhere; }
-.span { display: block; color: var(--ink-soft); font-size: 0.82rem; }
+.time { font-weight: 700; font-size: 1rem; font-variant-numeric: tabular-nums; }
+.time.allday { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+.title { display: block; font-size: 1.14rem; line-height: 1.3; overflow-wrap: anywhere; }
+.span { display: block; color: var(--ink-soft); font-size: 0.88rem; }
 .ev-allday { background: var(--allday); padding: 6px 10px; }
-.loc { display: flex; align-items: flex-start; gap: 4px; color: var(--ink-soft); font-size: 0.88rem; margin-top: 2px; overflow-wrap: anywhere; }
+.loc { display: flex; align-items: flex-start; gap: 4px; color: var(--ink-soft); font-size: 0.95rem; margin-top: 2px; overflow-wrap: anywhere; }
+/* AM / PM headings within a day. */
+.part-head { margin: 12px 0 0; padding-bottom: 3px; border-bottom: 1px solid var(--line); font-size: 0.72rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); }
+.part .events { padding-top: 4px; }
+.more { color: var(--ink-soft); font-weight: 650; margin: 8px 0 0; }
 .pin { width: 13px; height: 13px; flex: none; margin-top: 3px; }
 .empty { color: var(--ink-soft); margin: 10px 0 0; font-size: 0.95rem; }
 
@@ -234,11 +241,24 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--pete); ou
 
 /* ---- Seven columns on wide screens, like the door ---------------------- */
 @media (min-width: 900px) {
-  .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .day { border: 0; border-radius: 0; border-right: 1px solid var(--line); min-height: 60vh; padding: 0 12px 14px; }
-  .day:last-child { border-right: 0; }
-  .today { box-shadow: inset 0 0 0 2px var(--accent); }
+  /* Today's column is wider; rows: day heads, multi-day bars, day bodies. */
+  .week { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(6, minmax(0, 1fr)); grid-template-rows: var(--rows);
+    gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .col { display: block; grid-row: 1 / -1; border-right: 1px solid var(--line); }
+  .col:nth-child(7) { border-right: 0; }
+  .col-today { box-shadow: inset 0 0 0 2px var(--accent); }
+  .day { display: contents; }
+  .day-top { grid-column: var(--c); grid-row: 1; padding: 0 12px; position: relative; }
+  .day-body { grid-column: var(--c); grid-row: var(--body-row) / -1; min-height: 55vh; padding: 0 12px 14px; position: relative; }
+  .ev-span-copy { display: none; }
+  .spans { display: contents; list-style: none; }
+  .span-bar { position: relative; margin: 8px 10px 0; padding: 6px 10px; border-radius: 8px; background: var(--allday);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+  .span-bar.from-before { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+  .span-bar.runs-on { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+  .bar-main { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .span-bar .title { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .span-bar .loc { margin: 0; white-space: nowrap; }
   .today .day-head { background: var(--accent); color: var(--accent-ink); margin: 0 -12px; padding-inline: 12px; }
   .today .date { color: inherit; opacity: 0.8; }
   .today-tag { display: none; }
