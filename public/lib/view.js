@@ -372,6 +372,13 @@ if (en) {
   let size = parseFloat(getComputedStyle(en).fontSize);
   while (en.scrollWidth > en.clientWidth + 1 && size > 22) { size -= 1; en.style.fontSize = size + 'px'; }
 }
+// A title whose longest word is wider than its column shrinks until that
+// word fits, rather than breaking mid-word (down to 28px; past that it breaks).
+for (const t of document.querySelectorAll('.ev .title')) {
+  let size = parseFloat(getComputedStyle(t).fontSize);
+  while (t.scrollWidth > t.clientWidth + 1 && size > 28) { size -= 1; t.style.fontSize = size + 'px'; }
+  if (t.scrollWidth > t.clientWidth + 1) t.style.overflowWrap = 'anywhere';
+}
 // Each day's body: drop event rows from the bottom (evening first) until it
 // fits, say how many are hidden, and drop a time-of-day heading left empty.
 for (const body of document.querySelectorAll('.day-body')) {
@@ -432,9 +439,9 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .span-bar.from-before { border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .span-bar.runs-on { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .bar-main { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
-.span-bar .title { font-size: 32px; font-weight: 700; -webkit-line-clamp: 1; }
-.span-bar .loc { font-size: 25px; }
-.part-head { font-size: 21px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #444;
+.span-bar .title { font-size: 39px; font-weight: 700; -webkit-line-clamp: 1; }
+.span-bar .loc { font-size: 30px; }
+.part-head { font-size: 24px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #444;
   padding-top: 14px; border-bottom: 2px solid #bbb; padding-bottom: 3px; }
 .part .events { padding-top: 10px; }
 .dow { font-size: 40px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
@@ -472,19 +479,19 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .events { list-style: none; display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 .more { padding-top: 10px; }
 .ev { display: flex; flex-direction: column; gap: 3px; }
-.ev-top { display: flex; justify-content: space-between; align-items: center; min-height: 38px; }
-.time { font-size: 30px; font-weight: 700; }
-.time.allday { font-size: 23px; text-transform: uppercase; letter-spacing: 0.5px; }
+.ev-top { display: flex; justify-content: space-between; align-items: center; min-height: 42px; }
+.time { font-size: 36px; font-weight: 700; }
+.time.allday { font-size: 26px; text-transform: uppercase; letter-spacing: 0.5px; }
 .ev-allday { background: #e4e4e4; padding: 6px 8px 8px; border-radius: 6px; }
-.title { font-size: 33px; line-height: 1.18; hyphens: auto; display: -webkit-box; -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.span { color: #555; font-size: 24px; }
-.loc { display: flex; align-items: center; gap: 4px; font-size: 26px; color: #444; min-width: 0; }
+.title { font-size: 40px; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: normal; }
+.span { color: #555; font-size: 28px; }
+.loc { display: flex; align-items: center; gap: 4px; font-size: 31px; color: #444; min-width: 0; }
 .loc > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pin { width: 22px; height: 22px; flex: none; }
+.pin { width: 26px; height: 26px; flex: none; }
 .past .loc { color: #a0a0a0; }
 .badges { display: flex; gap: 5px; }
-.badge { font-size: 23px; font-weight: 700; width: 38px; height: 38px; border: 2.5px solid #000;
+.badge { font-size: 25px; font-weight: 700; width: 42px; height: 42px; border: 2.5px solid #000;
   border-radius: 6px; display: flex; align-items: center; justify-content: center; line-height: 1; }
 .badge-d { background: #000; color: #fff; }
 .more { font-size: 26px; font-weight: 700; color: #333; }
