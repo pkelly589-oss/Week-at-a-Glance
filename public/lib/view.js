@@ -378,6 +378,14 @@ for (const body of document.querySelectorAll('.day-body')) {
   const rows = [...body.querySelectorAll('.ev:not(.ev-span-copy)')]; let hidden = 0;
   const more = document.createElement('p'); more.className = 'more';
   const fits = () => body.scrollHeight <= body.clientHeight + 1;
+  // First, shorten titles longer than two lines, longest first.
+  if (!fits()) {
+    const twoLines = (t) => 2 * parseFloat(getComputedStyle(t).lineHeight) + 2;
+    const long = [...body.querySelectorAll('.ev:not(.ev-span-copy) .title')]
+      .filter((t) => t.scrollHeight > twoLines(t)).sort((a, b) => b.scrollHeight - a.scrollHeight);
+    for (const t of long) { if (fits()) break; t.classList.add('clamp'); }
+  }
+  // Then, if it still doesn't fit, hide events from the bottom.
   while (!fits() && hidden < rows.length) {
     const r = rows[rows.length - 1 - hidden], part = r.closest('.part');
     r.remove(); hidden++;
@@ -432,7 +440,8 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .span-bar.from-before { border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .span-bar.runs-on { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .bar-main { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
-.span-bar .title { font-size: 32px; font-weight: 700; -webkit-line-clamp: 1; }
+.span-bar .title { font-size: 32px; font-weight: 700; display: -webkit-box; -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical; overflow: hidden; }
 .span-bar .loc { font-size: 25px; }
 .part-head { font-size: 21px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #444;
   padding-top: 14px; border-bottom: 2px solid #bbb; padding-bottom: 3px; }
@@ -476,8 +485,10 @@ h1 { font-size: 96px; font-weight: 700; letter-spacing: -1px; line-height: 1.02;
 .time { font-size: 30px; font-weight: 700; }
 .time.allday { font-size: 23px; text-transform: uppercase; letter-spacing: 0.5px; }
 .ev-allday { background: #e4e4e4; padding: 6px 8px 8px; border-radius: 6px; }
-.title { font-size: 33px; line-height: 1.18; hyphens: auto; display: -webkit-box; -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.title { font-size: 33px; line-height: 1.18; display: block; overflow-wrap: anywhere; }
+/* Titles show in full; on a day short of room the fit script shortens the
+   longest to two lines (.clamp) before hiding any events. */
+.title.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .span { color: #555; font-size: 24px; }
 .loc { display: flex; align-items: center; gap: 4px; font-size: 26px; color: #444; min-width: 0; }
 .loc > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
